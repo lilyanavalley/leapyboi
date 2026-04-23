@@ -1,0 +1,21 @@
+# cfg.toml.example — copy this file to cfg.toml and fill in your values.
+#
+# cfg.toml is intentionally gitignored to avoid committing credentials.
+# build.rs reads this file and passes the values to the firmware at compile time.
+
+[leapyboi]
+# Your 2.4 GHz WiFi network name (SSID).
+# Note: ESP32-C6 supports both 2.4 GHz and 5 GHz, but ESP-IDF WiFi drivers
+# typically work best / most reliably on 2.4 GHz for embedded use.
+wifi_ssid = "YOUR_WIFI_SSID"
+
+# WiFi password.
+wifi_pass = "YOUR_WIFI_PASSWORD"
+
+# MQTT broker URL.  For a local HomeAssistant instance this is typically:
+#   mqtt://192.168.1.x:1883
+# TLS (mqtts://) is supported but requires configuring the broker certificate.
+mqtt_url = "mqtt://192.168.1.x:1883"
+
+# Client ID sent to the broker.  Must be unique per device on the same broker.
+mqtt_client_id = "leapyboi"

@@ -1,0 +1,22 @@
+[build]
+# ESP32-C6 is RISC-V based; this target is provided by the esp-rs toolchain.
+target = "riscv32imac-esp-espidf"
+
+[target.riscv32imac-esp-espidf]
+# ldproxy forwards linker arguments to the real linker; required by esp-idf-hal.
+linker = "ldproxy"
+# Flash the firmware and open the serial monitor after a successful build.
+# Install with: `cargo install espflash`
+runner = "espflash flash --monitor"
+rustflags = [
+    # Enable 64-bit time_t on ESP-IDF (avoids the year-2038 problem).
+    "--cfg", "espidf_time64",
+]
+
+[env]
+# ESP-IDF version that embuild will download / locate.  Tested with v5.2.x.
+ESP_IDF_VERSION = "v5.2.1"
+
+[unstable]
+# Build std + panic_abort from source for the embedded target.
+build-std = ["std", "panic_abort"]

@@ -1,0 +1,49 @@
+[package]
+name        = "leapyboi"
+version     = "0.1.0"
+edition     = "2021"
+description = "ESP32-C6 firmware: WS2812B Neopixel ring light controlled over MQTT / HomeAssistant"
+resolver    = "2"
+
+[[bin]]
+name    = "leapyboi"
+harness = false
+
+# ── Release profile ──────────────────────────────────────────────────────────
+[profile.release]
+opt-level = "s"   # Optimise for size
+
+[profile.dev]
+debug     = true
+opt-level = "z"   # Also optimise for size in dev (flash space is limited)
+
+# ── Runtime dependencies ──────────────────────────────────────────────────────
+[dependencies]
+# ESP-IDF high-level services: WiFi, MQTT, NVS, event-loop, …
+# `binstart` pulls in the esp-idf-sys start-up glue that calls main().
+esp-idf-svc = { version = "0.48", features = ["binstart"] }
+
+# WS2812B / Neopixel driver over the RMT peripheral.
+# `smart-leds-trait` enables the SmartLedsWrite impl used in led.rs.
+ws2812-esp32-rmt-driver = { version = "0.8", features = ["smart-leds-trait"] }
+
+# Colour iterator helpers (RGB8 type, brightness scaling).
+smart-leds = "0.3"
+
+# Logging façade — backed by ESP-IDF's logging facility at runtime.
+log = { version = "0.4", default-features = false }
+
+# Ergonomic error handling with backtraces (std is available via ESP-IDF).
+anyhow = "1"
+
+# JSON serialisation for MQTT payloads and HA discovery messages.
+serde      = { version = "1", default-features = false, features = ["derive"] }
+serde_json = "1"
+
+# ── Build-time dependencies ───────────────────────────────────────────────────
+[build-dependencies]
+# embuild handles the ESP-IDF CMake build and exposes linker search paths.
+embuild = "0.31"
+# Used in build.rs to parse cfg.toml.
+toml  = "0.8"
+serde = { version = "1", features = ["derive"] }
