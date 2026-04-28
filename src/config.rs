@@ -47,3 +47,36 @@ pub const DEVICE_NAME: &str = "Leapyboi Ring";
 pub const DEVICE_MODEL: &str = "ESP32-C6";
 pub const DEVICE_MANUFACTURER: &str = "DIY";
 pub const DEVICE_UNIQUE_ID: &str = "leapyboi_ring_light";
+
+// ── mmWave presence sensor (optional — enable with `--features mmwave`) ───────
+
+/// MQTT discovery topic for the HA `binary_sensor` presence entity.
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_DISCOVERY_TOPIC: &str =
+    "homeassistant/binary_sensor/leapyboi_presence/config";
+
+/// MQTT topic where presence state (`"ON"` / `"OFF"`) is published.
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_STATE_TOPIC: &str = "leapyboi/presence/state";
+
+/// Unique ID used in the HA `binary_sensor` discovery message.
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_UNIQUE_ID: &str = "leapyboi_presence";
+
+/// LED colour (r, g, b) applied when presence **is** detected.
+/// Adjust to taste; warm-white is the default.
+#[cfg(feature = "mmwave")]
+pub const PRESENCE_COLOR: (u8, u8, u8) = (255, 200, 100);
+
+/// LED brightness (0-255) applied when presence is detected.
+#[cfg(feature = "mmwave")]
+pub const PRESENCE_BRIGHTNESS: u8 = 200;
+
+/// LED colour (r, g, b) applied when **no** presence is detected.
+/// Set to `(0, 0, 0)` to turn the ring off when the room is empty.
+#[cfg(feature = "mmwave")]
+pub const NO_PRESENCE_COLOR: (u8, u8, u8) = (0, 0, 30);
+
+/// LED brightness applied when no presence is detected.
+#[cfg(feature = "mmwave")]
+pub const NO_PRESENCE_BRIGHTNESS: u8 = 50;

@@ -5,6 +5,13 @@ edition     = "2021"
 description = "ESP32-C6 firmware: WS2812B Neopixel ring light controlled over MQTT / HomeAssistant"
 resolver    = "2"
 
+# ── Feature flags ──────────────────────────────────────────────────────────────
+[features]
+default = []
+# Enable support for the Seeed XIAO 24 GHz mmWave Human Static Presence Sensor.
+# Build with: cargo build --features mmwave
+mmwave = []
+
 [[bin]]
 name    = "leapyboi"
 harness = false

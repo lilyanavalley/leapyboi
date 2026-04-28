@@ -80,6 +80,9 @@ impl MqttHandle {
 
         publish_discovery(&mut self.client)?;
 
+        #[cfg(feature = "mmwave")]
+        publish_presence_discovery(&mut self.client)?;
+
         self.client
             .publish(
                 config::AVAILABILITY_TOPIC,
@@ -91,6 +94,19 @@ impl MqttHandle {
 
         info!("MQTT: subscribed and HA discovery published");
         Ok(())
+    }
+
+    /// Publish the current presence state (`"ON"` / `"OFF"`) to HomeAssistant.
+    #[cfg(feature = "mmwave")]
+    pub fn publish_presence(&mut self, detected: bool) -> Result<()> {
+        self.client
+            .publish(
+                config::MMWAVE_STATE_TOPIC,
+                QoS::AtLeastOnce,
+                true, // retain so HA reflects state after a restart
+                if detected { b"ON" } else { b"OFF" },
+            )
+            .context("failed to publish presence state")
     }
 
     /// Non-blocking receive of the next light command, if any.
@@ -273,4 +289,46 @@ fn publish_state(client: &mut EspMqttClient<'static>, state: &LightState) -> Res
             json.as_bytes(),
         )
         .context("failed to publish light state")
+}
+
+/// Publish a HomeAssistant MQTT discovery message for the presence `binary_sensor`.
+///
+/// Called from [`MqttHandle::on_connected`] whenever the feature is enabled.
+#[cfg(feature = "mmwave")]
+fn publish_presence_discovery(client: &mut EspMqttClient<'static>) -> Result<()> {
+    let payload = format!(
+        r#"{{
+  "name": "Leapyboi Presence",
+  "unique_id": "{uid}",
+  "device_class": "presence",
+  "state_topic": "{state}",
+  "payload_on": "ON",
+  "payload_off": "OFF",
+  "availability_topic": "{avail}",
+  "payload_available": "online",
+  "payload_not_available": "offline",
+  "device": {{
+    "identifiers": ["{dev_uid}"],
+    "name": "{dev_name}",
+    "model": "{model}",
+    "manufacturer": "{mfr}"
+  }}
+}}"#,
+        uid     = config::MMWAVE_UNIQUE_ID,
+        state   = config::MMWAVE_STATE_TOPIC,
+        avail   = config::AVAILABILITY_TOPIC,
+        dev_uid = config::DEVICE_UNIQUE_ID,
+        dev_name = config::DEVICE_NAME,
+        model   = config::DEVICE_MODEL,
+        mfr     = config::DEVICE_MANUFACTURER,
+    );
+
+    client
+        .publish(
+            config::MMWAVE_DISCOVERY_TOPIC,
+            QoS::AtLeastOnce,
+            true, // retain
+            payload.as_bytes(),
+        )
+        .context("failed to publish presence discovery")
 }
