@@ -52,6 +52,9 @@ const CTRL_PRESENCE: u8 = 0x80;
 const CMD_PRESENCE: u8 = 0x81;
 const DATA_PRESENT: u8 = 0x01;
 
+/// UART read timeout in FreeRTOS ticks (≈ 1 ms/tick → ~100 ms).
+const UART_READ_TIMEOUT_TICKS: u32 = 100;
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /// A presence event emitted when the sensor's detection state changes.
@@ -134,7 +137,7 @@ fn run_reader(
     let mut buf = [0u8; 64];
 
     loop {
-        match driver.read(&mut buf, 100) {
+        match driver.read(&mut buf, UART_READ_TIMEOUT_TICKS) {
             Ok(0) => {
                 // Timeout — no bytes received within the window; loop again.
             }
@@ -171,7 +174,9 @@ fn handle_frame(
                 PresenceEvent::Gone
             };
             info!("mmWave: presence {}", if detected { "detected" } else { "gone" });
-            event_tx.send(event).ok();
+            if event_tx.send(event).is_err() {
+                warn!("mmWave: event channel closed — dropping presence event");
+            }
         }
     }
 }
