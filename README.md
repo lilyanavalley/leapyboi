@@ -26,8 +26,8 @@ ESP32-C6 GND     ────────────  Ring GND
 5V supply        ────────────  Ring 5V
 ```
 
-Change the pin in `src/config.rs` → `LED_DATA_PIN_NUM` if you use a different
-GPIO.  Any RMT-capable output pin works.
+Change the pin in `cfg.toml` → `led_data_pin_num` if you use a different GPIO.
+Any RMT-capable output pin works.
 
 ---
 
@@ -45,6 +45,9 @@ espup install          # adds the `esp` toolchain and RISC-V targets
 
 # Install espflash (flash + serial monitor)
 cargo install espflash
+
+# Install ldproxy (forwards arguments to linker)
+cargo install ldproxy
 ```
 
 ### ESP-IDF
@@ -59,7 +62,7 @@ Nothing extra is needed; the version is pinned in `.cargo/config.toml`
 
 ```bash
 cp cfg.toml.example cfg.toml
-$EDITOR cfg.toml          # fill in WiFi SSID/password and MQTT broker URL
+$EDITOR cfg.toml          # fill in WiFi, MQTT broker URL, and MQTT password
 ```
 
 `cfg.toml` is gitignored to keep credentials out of version control.
@@ -129,7 +132,7 @@ leapyboi/
 | What | Where |
 |------|-------|
 | Number of LEDs | `src/config.rs` → `LED_COUNT` |
-| Data GPIO pin | `src/config.rs` → `LED_DATA_PIN_NUM` (and `src/main.rs` → `peripherals.pins.gpio8`) |
+| Data GPIO pin | `cfg.toml` → `led_data_pin_num` |
 | MQTT topics | `src/config.rs` → `HA_DISCOVERY_TOPIC`, `COMMAND_TOPIC`, … |
 | Device name shown in HA | `src/config.rs` → `DEVICE_NAME` |
 | ESP-IDF version | `.cargo/config.toml` → `ESP_IDF_VERSION` |

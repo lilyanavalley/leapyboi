@@ -121,6 +121,7 @@ pub fn start() -> Result<MqttHandle> {
     // runs for the entire lifetime of the firmware.
     let conf = Box::new(MqttClientConfiguration {
         client_id: Some(config::MQTT_CLIENT_ID),
+        password: config::mqtt_password(),
         keep_alive_interval: Some(Duration::from_secs(60)),
         // Last-Will-and-Testament: HA marks the device offline if it drops.
         lwt: Some(LwtConfiguration {
@@ -161,10 +162,11 @@ fn spawn_event_loop(
         .stack_size(6 * 1024)
         .spawn(move || {
             info!("MQTT event loop started");
-            for message in connection {
-                match message {
+            loop {
+                match connection.next() {
                     Err(e) => {
                         error!("MQTT connection error: {:?}", e);
+                        break;
                     }
                     Ok(event) => match event.payload() {
                         EventPayload::BeforeConnect => {
@@ -248,6 +250,7 @@ fn publish_discovery(client: &mut EspMqttClient<'static>) -> Result<()> {
             payload.as_bytes(),
         )
         .context("failed to publish HA discovery")
+        .map(|_| ())
 }
 
 /// Publish the current light state to HomeAssistant.
@@ -273,4 +276,5 @@ fn publish_state(client: &mut EspMqttClient<'static>, state: &LightState) -> Res
             json.as_bytes(),
         )
         .context("failed to publish light state")
+        .map(|_| ())
 }

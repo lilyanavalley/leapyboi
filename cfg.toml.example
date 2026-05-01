@@ -19,3 +19,10 @@ mqtt_url = "mqtt://192.168.1.x:1883"
 
 # Client ID sent to the broker.  Must be unique per device on the same broker.
 mqtt_client_id = "leapyboi"
+
+# MQTT password used for broker authentication.
+# Leave empty if your broker allows anonymous clients.
+mqtt_password = "YOUR_MQTT_PASSWORD"
+
+# GPIO number wired to the WS2812B DIN data line.
+led_data_pin_num = 8
