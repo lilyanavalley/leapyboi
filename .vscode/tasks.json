@@ -1,0 +1,32 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "cargo check warning cleanup",
+			"type": "shell",
+			"command": "cargo",
+			"args": [
+				"check"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "cargo check config-driven pin",
+			"type": "shell",
+			"command": "cargo",
+			"args": [
+				"check"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "cargo check led pin from cfg",
+			"type": "shell",
+			"command": "cargo",
+			"args": [
+				"check"
+			],
+			"isBackground": false
+		}
+	]
+}
