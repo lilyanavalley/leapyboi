@@ -17,6 +17,18 @@ pub const MQTT_URL: &str = env!("MQTT_URL");
 /// MQTT client ID sent to the broker (must be unique per device).
 pub const MQTT_CLIENT_ID: &str = env!("MQTT_CLIENT_ID");
 
+/// MQTT username used for broker authentication.
+pub const MQTT_USERNAME: &str = env!("MQTT_USERNAME");
+
+/// Optional MQTT username for client authentication.
+pub fn mqtt_username() -> Option<&'static str> {
+	if MQTT_USERNAME.is_empty() {
+		None
+	} else {
+		Some(MQTT_USERNAME)
+	}
+}
+
 /// MQTT password used for broker authentication.
 pub const MQTT_PASSWORD: &str = env!("MQTT_PASSWORD");
 

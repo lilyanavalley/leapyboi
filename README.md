@@ -62,7 +62,7 @@ Nothing extra is needed; the version is pinned in `.cargo/config.toml`
 
 ```bash
 cp cfg.toml.example cfg.toml
-$EDITOR cfg.toml          # fill in WiFi, MQTT broker URL, and MQTT password
+$EDITOR cfg.toml          # fill in WiFi, MQTT broker URL, and MQTT auth fields
 ```
 
 `cfg.toml` is gitignored to keep credentials out of version control.
@@ -86,6 +86,29 @@ cargo run --release
 
 > **espflash** auto-detects the serial port.  If it fails, pass the port
 > explicitly: `cargo run --release -- --port /dev/ttyUSB0`
+
+---
+
+## Debug logging
+
+On startup, the firmware logs which MQTT authentication mode is active.
+This helps diagnose EMQX / broker authz mismatches without exposing secrets.
+
+Example log line:
+
+```text
+MQTT auth mode: username+password (username=set, password=set)
+```
+
+Possible modes:
+
+- `username+password`
+- `username-only`
+- `password-only`
+- `client-id-only`
+
+`set` / `unset` only indicate whether fields are configured; actual
+credential values are never printed.
 
 ---
 
