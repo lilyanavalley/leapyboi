@@ -97,9 +97,9 @@ pub const MMWAVE_STATE_TOPIC: &str = "leapyboi/presence/state";
 pub const MMWAVE_UNIQUE_ID: &str = "leapyboi_presence";
 
 /// LED colour (r, g, b) applied when presence **is** detected.
-/// Adjust to taste; warm-white is the default.
+/// Adjust to taste; red is the default.
 #[cfg(feature = "mmwave")]
-pub const PRESENCE_COLOR: (u8, u8, u8) = (255, 200, 100);
+pub const PRESENCE_COLOR: (u8, u8, u8) = (255, 0, 0);
 
 /// LED brightness (0-255) applied when presence is detected.
 #[cfg(feature = "mmwave")]
@@ -107,8 +107,9 @@ pub const PRESENCE_BRIGHTNESS: u8 = 200;
 
 /// LED colour (r, g, b) applied when **no** presence is detected.
 /// Set to `(0, 0, 0)` to turn the ring off when the room is empty.
+/// Default is yellow to provide a gentle night light when no one's home. Adjust to taste!
 #[cfg(feature = "mmwave")]
-pub const NO_PRESENCE_COLOR: (u8, u8, u8) = (0, 0, 30);
+pub const NO_PRESENCE_COLOR: (u8, u8, u8) = (255, 255, 0);
 
 /// LED brightness applied when no presence is detected.
 #[cfg(feature = "mmwave")]
