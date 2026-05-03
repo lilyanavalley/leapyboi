@@ -17,11 +17,44 @@ pub const MQTT_URL: &str = env!("MQTT_URL");
 /// MQTT client ID sent to the broker (must be unique per device).
 pub const MQTT_CLIENT_ID: &str = env!("MQTT_CLIENT_ID");
 
+/// MQTT username used for broker authentication.
+pub const MQTT_USERNAME: &str = env!("MQTT_USERNAME");
+
+/// Optional MQTT username for client authentication.
+pub fn mqtt_username() -> Option<&'static str> {
+	if MQTT_USERNAME.is_empty() {
+		None
+	} else {
+		Some(MQTT_USERNAME)
+	}
+}
+
+/// MQTT password used for broker authentication.
+pub const MQTT_PASSWORD: &str = env!("MQTT_PASSWORD");
+
+/// Optional MQTT password for client authentication.
+pub fn mqtt_password() -> Option<&'static str> {
+	if MQTT_PASSWORD.is_empty() {
+		None
+	} else {
+		Some(MQTT_PASSWORD)
+	}
+}
+
 // ── Hardware configuration ────────────────────────────────────────────────────
 
 /// GPIO pin number wired to the DIN data line of the WS2812B ring.
-/// Adjust to match your physical wiring; any RMT-capable output pin works.
-pub const LED_DATA_PIN_NUM: i32 = 8;
+///
+/// This is used at runtime via `AnyOutputPin`, so changing this value does
+/// not require touching `main.rs`.
+pub const LED_DATA_PIN_NUM: &str = env!("LED_DATA_PIN_NUM");
+
+/// Parsed LED data pin number loaded from cfg.toml at compile time.
+pub fn led_data_pin_num() -> i32 {
+	LED_DATA_PIN_NUM
+		.parse::<i32>()
+		.expect("LED_DATA_PIN_NUM must be a valid integer in cfg.toml")
+}
 
 /// Number of LEDs in the ring.  Change to match your specific ring module.
 pub const LED_COUNT: usize = 12;

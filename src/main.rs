@@ -16,6 +16,7 @@ use std::time::Duration;
 use anyhow::Result;
 use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
+    hal::gpio::AnyOutputPin,
     hal::peripherals::Peripherals,
     log::EspLogger,
     nvs::EspDefaultNvsPartition,
@@ -54,7 +55,8 @@ fn main() -> Result<()> {
     // GPIO pin and RMT channel are consumed (moved) here; they live for the
     // remainder of main(), which is effectively 'static on a microcontroller.
     let rmt_channel = peripherals.rmt.channel0;
-    let led_pin = peripherals.pins.gpio8; // <── adjust to your wiring
+    // Runtime-selected output pin so wiring can be changed in config.rs.
+    let led_pin = unsafe { AnyOutputPin::new(config::led_data_pin_num()) };
 
     let ws2812_driver =
         LedPixelEsp32Rmt::<RGB8, LedPixelColorGrb24>::new(rmt_channel, led_pin)?;

@@ -132,11 +132,27 @@ pub fn start() -> Result<MqttHandle> {
     let reconnected = Arc::new(AtomicBool::new(false));
     let reconnected_thread = Arc::clone(&reconnected);
 
+    let has_username = config::mqtt_username().is_some();
+    let has_password = config::mqtt_password().is_some();
+    let auth_mode = match (has_username, has_password) {
+        (true, true) => "username+password",
+        (true, false) => "username-only",
+        (false, true) => "password-only",
+        (false, false) => "client-id-only",
+    };
+    info!(
+        "MQTT auth mode: {auth_mode} (username={}, password={})",
+        if has_username { "set" } else { "unset" },
+        if has_password { "set" } else { "unset" },
+    );
+
     // Build a 'static config so that EspMqttClient<'static> can be moved into
     // a thread::spawn closure.  Box::leak is intentional: the MQTT client
     // runs for the entire lifetime of the firmware.
     let conf = Box::new(MqttClientConfiguration {
         client_id: Some(config::MQTT_CLIENT_ID),
+        username: config::mqtt_username(),
+        password: config::mqtt_password(),
         keep_alive_interval: Some(Duration::from_secs(60)),
         // Last-Will-and-Testament: HA marks the device offline if it drops.
         lwt: Some(LwtConfiguration {
@@ -177,10 +193,11 @@ fn spawn_event_loop(
         .stack_size(6 * 1024)
         .spawn(move || {
             info!("MQTT event loop started");
-            for message in connection {
-                match message {
+            loop {
+                match connection.next() {
                     Err(e) => {
                         error!("MQTT connection error: {:?}", e);
+                        break;
                     }
                     Ok(event) => match event.payload() {
                         EventPayload::BeforeConnect => {
@@ -264,6 +281,7 @@ fn publish_discovery(client: &mut EspMqttClient<'static>) -> Result<()> {
             payload.as_bytes(),
         )
         .context("failed to publish HA discovery")
+        .map(|_| ())
 }
 
 /// Publish the current light state to HomeAssistant.
@@ -289,6 +307,7 @@ fn publish_state(client: &mut EspMqttClient<'static>, state: &LightState) -> Res
             json.as_bytes(),
         )
         .context("failed to publish light state")
+        .map(|_| ())
 }
 
 /// Publish a HomeAssistant MQTT discovery message for the presence `binary_sensor`.
