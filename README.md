@@ -6,6 +6,11 @@ to **HomeAssistant** via **MQTT over WiFi**.
 The firmware exposes the ring as a standard HA `light` entity with full
 on/off, brightness (0-255), and RGB colour control.
 
+Optionally, a **Seeed XIAO 24 GHz mmWave Human Static Presence Sensor**
+(MR24HPC1 / X004QXKIDH) can be added to automatically change the ring's colour
+based on whether someone is in the room.  When enabled, a `binary_sensor`
+presence entity also appears in HomeAssistant.
+
 ---
 
 ## Hardware
@@ -17,6 +22,7 @@ on/off, brightness (0-255), and RGB colour control.
 | 5 V power supply | Power the ring directly; **do not** power a full ring from the USB 5 V rail |
 | 300–500 Ω resistor | In series on the DIN data line to protect against ringing |
 | 1000 µF capacitor | Across the ring's power rails to absorb current spikes |
+| *(optional)* Seeed XIAO 24 GHz mmWave sensor | UART, 3.3 V; see [mmWave section](#mmwave-presence-sensor-optional) |
 
 **Default wiring**
 
@@ -89,6 +95,66 @@ cargo run --release
 
 ---
 
+## mmWave presence sensor *(optional)*
+
+The [Seeed XIAO 24 GHz mmWave Human Static Presence Sensor](https://www.seeedstudio.com/24GHz-mmWave-Sensor-Human-Static-Presence-Module-Lite-p-5524.html)
+(MR24HPC1 / X004QXKIDH) can be added to automatically respond to occupancy.
+
+### What it does
+
+| State | LED ring behaviour |
+|-------|--------------------|
+| Person **detected** | Turns **on** with warm-white (configurable in `src/config.rs`) |
+| **No** person detected | Switches to a dim blue tint (or turns off if `NO_PRESENCE_COLOR = (0,0,0)`) |
+
+A `binary_sensor` **Leapyboi Presence** entity also appears in HomeAssistant
+via MQTT discovery.  HomeAssistant light commands continue to work normally —
+the presence sensor is an additional input, and each presence change is
+reflected back to HA.
+
+### Wiring
+
+The sensor operates at **3.3 V** and communicates via **UART at 115 200 baud**.
+
+```
+Sensor 3V3  ────────────  ESP32-C6 3V3
+Sensor GND  ────────────  ESP32-C6 GND
+Sensor TX   ────────────  ESP32-C6 GPIO 4  (ESP RX ← sensor data stream)
+Sensor RX   ────────────  ESP32-C6 GPIO 5  (ESP TX → sensor, for config)
+```
+
+> **Note:** `Sensor RX` / `ESP GPIO 5` is only needed if you want to send
+> configuration commands to the sensor.  For basic presence detection it can
+> be left unconnected.
+
+Change the GPIO numbers in `src/main.rs` (`peripherals.pins.gpio4 / gpio5`)
+to match your actual wiring.
+
+### Enabling the feature
+
+```bash
+# Debug build with mmWave support
+cargo build --features mmwave
+
+# Release build
+cargo build --release --features mmwave
+
+# Build, flash, and monitor
+cargo run --release --features mmwave
+```
+
+### Customising behaviour
+
+| Constant | Default | Meaning |
+|----------|---------|---------|
+| `PRESENCE_COLOR` | `(255, 200, 100)` | LED colour when someone is present |
+| `PRESENCE_BRIGHTNESS` | `200` | Brightness (0-255) when present |
+| `NO_PRESENCE_COLOR` | `(0, 0, 30)` | LED colour when no one is detected |
+| `NO_PRESENCE_BRIGHTNESS` | `50` | Brightness when no one is detected |
+
+Set `NO_PRESENCE_COLOR = (0, 0, 0)` to turn the ring **off** when the room is empty.
+
+All constants live in `src/config.rs` under the `mmwave` feature gate.
 ## Debug logging
 
 On startup, the firmware logs which MQTT authentication mode is active.
@@ -139,7 +205,8 @@ leapyboi/
 │   ├── config.rs    # Compile-time constants (pin, topic names, …)
 │   ├── led.rs       # WS2812B ring controller (generic over SmartLedsWrite)
 │   ├── wifi.rs      # WiFi connection helper
-│   └── mqtt.rs      # MQTT client, HA discovery, command / state handling
+│   ├── mqtt.rs      # MQTT client, HA discovery, command / state handling
+│   └── mmwave.rs    # mmWave UART driver + frame parser (feature: mmwave)
 ├── build.rs         # Reads cfg.toml, calls embuild for ESP-IDF
 ├── Cargo.toml
 ├── sdkconfig.defaults  # ESP-IDF Kconfig overrides
@@ -159,3 +226,5 @@ leapyboi/
 | MQTT topics | `src/config.rs` → `HA_DISCOVERY_TOPIC`, `COMMAND_TOPIC`, … |
 | Device name shown in HA | `src/config.rs` → `DEVICE_NAME` |
 | ESP-IDF version | `.cargo/config.toml` → `ESP_IDF_VERSION` |
+| mmWave UART pins | `src/main.rs` → `peripherals.pins.gpio4 / gpio5` |
+| mmWave LED colours | `src/config.rs` → `PRESENCE_COLOR`, `NO_PRESENCE_COLOR`, … |

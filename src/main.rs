@@ -30,6 +30,9 @@ mod led;
 mod mqtt;
 mod wifi;
 
+#[cfg(feature = "mmwave")]
+mod mmwave;
+
 use led::LedController;
 use mqtt::LightCommand;
 
@@ -96,6 +99,22 @@ fn main() -> Result<()> {
     std::thread::sleep(Duration::from_millis(500));
     led.all_off()?;
 
+    // ── mmWave presence sensor (optional feature) ─────────────────────────────
+    // Initialise after MQTT so that on_connected() has already published the
+    // binary_sensor discovery message before the first presence event fires.
+    #[cfg(feature = "mmwave")]
+    let mmwave = {
+        info!("Initialising mmWave presence sensor…");
+        // GPIO 5 → sensor RX (ESP transmits commands, optional)
+        // GPIO 4 ← sensor TX (ESP receives the data stream)
+        // Adjust these pins in src/main.rs to match your physical wiring.
+        mmwave::start(
+            peripherals.uart1,
+            peripherals.pins.gpio5, // ESP TX → sensor RX
+            peripherals.pins.gpio4, // ESP RX ← sensor TX
+        )?
+    };
+
     info!("Ready — waiting for HomeAssistant commands on {}", config::COMMAND_TOPIC);
 
     // ── Main loop ─────────────────────────────────────────────────────────────
@@ -108,11 +127,21 @@ fn main() -> Result<()> {
             }
         }
 
-        // Drain all queued commands in this iteration.
+        // Drain all queued HA light commands.
         while let Some(cmd) = mqtt.try_recv_command() {
             info!("Command received: {:?}", cmd);
             apply_command(&mut led, &cmd)?;
             mqtt.publish_state(&led.state)?;
+        }
+
+        // Drain all queued mmWave presence events.
+        #[cfg(feature = "mmwave")]
+        while let Some(event) = mmwave.try_recv() {
+            info!("mmWave event: {:?}", event);
+            let detected = event == mmwave::PresenceEvent::Detected;
+            apply_presence_event(&mut led, event)?;
+            mqtt.publish_state(&led.state)?;
+            mqtt.publish_presence(detected)?;
         }
 
         std::thread::sleep(Duration::from_millis(50));
@@ -141,5 +170,42 @@ where
         led.state.b = color.b;
     }
 
+    led.refresh()
+}
+
+// ── mmWave presence handler ───────────────────────────────────────────────────
+
+/// Apply a mmWave presence event to the LED ring.
+///
+/// - `Detected` → turn the ring on with the configured presence colour.
+/// - `Gone`     → switch to the no-presence colour (or turn off if `(0, 0, 0)`).
+#[cfg(feature = "mmwave")]
+fn apply_presence_event<D>(
+    led: &mut LedController<D>,
+    event: mmwave::PresenceEvent,
+) -> Result<()>
+where
+    D: SmartLedsWrite<Color = RGB8>,
+    D::Error: std::error::Error + Send + Sync + 'static,
+{
+    match event {
+        mmwave::PresenceEvent::Detected => {
+            let (r, g, b) = config::PRESENCE_COLOR;
+            led.state.on = true;
+            led.state.r = r;
+            led.state.g = g;
+            led.state.b = b;
+            led.state.brightness = config::PRESENCE_BRIGHTNESS;
+        }
+        mmwave::PresenceEvent::Gone => {
+            let (r, g, b) = config::NO_PRESENCE_COLOR;
+            // Turn the ring off if the no-presence colour is pure black.
+            led.state.on = r != 0 || g != 0 || b != 0;
+            led.state.r = r;
+            led.state.g = g;
+            led.state.b = b;
+            led.state.brightness = config::NO_PRESENCE_BRIGHTNESS;
+        }
+    }
     led.refresh()
 }
