@@ -316,7 +316,7 @@ leapyboi/
 | Data GPIO pin | `cfg.toml` → `led_data_pin_num` |
 | MQTT topics | `src/config.rs` → `HA_DISCOVERY_TOPIC`, `COMMAND_TOPIC`, … |
 | Device name shown in HA | `src/config.rs` → `DEVICE_NAME` |
-| Animation speeds | `src/config.rs` → `ANIM_RAINBOW_SPEED`, `ANIM_BREATHING_SPEED`, … |
+| Animation speeds | `src/config.rs` → `ANIM_RAINBOW_SPEED`, `ANIM_BREATHE_SPEED`, … |
 | Custom animation frames | Place `animation.png` in project root (width=`LED_COUNT`, height=frames) |
 | ESP-IDF version | `.cargo/config.toml` → `ESP_IDF_VERSION` |
 | mmWave UART pins | `src/main.rs` → `peripherals.pins.gpio4 / gpio5` |
