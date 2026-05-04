@@ -29,4 +29,5 @@ mqtt_username = "YOUR_MQTT_USERNAME"
 mqtt_password = "YOUR_MQTT_PASSWORD"
 
 # GPIO number wired to the WS2812B DIN data line.
-led_data_pin_num = 8
+# XIAO ESP32-C6 default: GPIO2 (D0).
+led_data_pin_num = 2
