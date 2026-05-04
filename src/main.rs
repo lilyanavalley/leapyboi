@@ -6,9 +6,11 @@
 ///   1. LED ring: brief white pulse (power-on indicator)
 ///   2. WiFi: connect to the configured SSID
 ///   3. LED ring: brief green pulse (WiFi connected)
-///   4. MQTT: connect to the broker, publish HA discovery
-///   5. LED ring: brief blue pulse (MQTT connected)
-///   6. Main loop: apply incoming HA commands and publish state
+///   4. OTA check: compare running version against GitHub Releases; download
+///      and apply any newer firmware then restart (skipped when URLs not set)
+///   5. MQTT: connect to the broker, publish HA discovery
+///   6. LED ring: brief blue pulse (MQTT connected)
+///   7. Main loop: apply incoming HA commands and publish state
 
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -28,6 +30,7 @@ use ws2812_esp32_rmt_driver::{driver::color::LedPixelColorGrb24, LedPixelEsp32Rm
 mod config;
 mod led;
 mod mqtt;
+mod ota;
 mod wifi;
 
 #[cfg(feature = "mmwave")]
@@ -100,6 +103,15 @@ fn main() -> Result<()> {
     std::thread::sleep(Duration::from_millis(500));
     led.all_off()?;
 
+    // ── OTA check ─────────────────────────────────────────────────────────────
+    // Performed once on each boot, before starting MQTT.  If a new firmware
+    // image is found the device downloads it and restarts; execution only
+    // continues here when the firmware is already up to date.
+    info!("OTA: checking for firmware update…");
+    if let Err(e) = ota::check_and_update(config::OTA_VERSION_URL, config::OTA_FIRMWARE_URL) {
+        log::warn!("OTA: check failed (continuing with current firmware): {e:#}");
+    }
+
     // ── MQTT ──────────────────────────────────────────────────────────────────
     info!("Starting MQTT…");
     let mut mqtt = mqtt::start()?;
@@ -142,6 +154,14 @@ fn main() -> Result<()> {
             info!("MQTT reconnected — re-subscribing…");
             if let Err(e) = mqtt.on_connected() {
                 log::error!("on_connected error: {e:?}");
+            }
+        }
+
+        // Handle an on-demand OTA update request received via MQTT.
+        if mqtt.ota_requested.swap(false, Ordering::Relaxed) {
+            info!("OTA: on-demand update requested via MQTT");
+            if let Err(e) = ota::apply_update(config::OTA_FIRMWARE_URL) {
+                log::error!("OTA: on-demand update failed: {e:#}");
             }
         }
 

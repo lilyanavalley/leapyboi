@@ -1,0 +1,110 @@
+# .github/workflows/release.yml
+#
+# Build leapyboi firmware and publish a GitHub Release on every version tag.
+#
+# Trigger: push a tag matching `v*` (e.g. `git tag v1.2.3 && git push --tags`).
+#
+# Prerequisites — set these as repository secrets before pushing a tag:
+#
+#   Required:
+#     WIFI_SSID          — 2.4 GHz network name
+#     WIFI_PASS          — WiFi password (leave empty for open networks)
+#     MQTT_URL           — broker URL, e.g. mqtt://192.168.1.100:1883
+#
+#   Optional (defaults shown):
+#     MQTT_CLIENT_ID     — default: "leapyboi"
+#     MQTT_USERNAME      — default: "" (no authentication)
+#     MQTT_PASSWORD      — default: "" (no authentication)
+#     LED_DATA_PIN_NUM   — GPIO pin number, default: 2
+#
+# The OTA URLs are derived automatically from the repository name and the tag,
+# so no secret is needed for them.
+#
+# Output artefacts attached to the release:
+#   leapyboi.bin   — flashable firmware image
+#   version.txt    — plain-text version string (e.g. "1.2.3"), used by the
+#                    on-device OTA check to avoid re-downloading the same build
+
+name: Release Firmware
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+
+    # The official esp-rs image ships the Xtensa/RISC-V Rust toolchain, the
+    # ESP-IDF, espflash, and all required build tools pre-installed.
+    container:
+      image: ghcr.io/esp-rs/idf-rust:esp32c6-latest
+
+    permissions:
+      contents: write   # needed to create the GitHub Release
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # Write cfg.toml from repository secrets so credentials are baked into
+      # this specific build.  GitHub Actions automatically masks secret values
+      # in log output.
+      - name: Write cfg.toml from secrets
+        env:
+          WIFI_SSID: ${{ secrets.WIFI_SSID }}
+          WIFI_PASS: ${{ secrets.WIFI_PASS }}
+          MQTT_URL: ${{ secrets.MQTT_URL }}
+          MQTT_CLIENT_ID: ${{ secrets.MQTT_CLIENT_ID }}
+          MQTT_USERNAME: ${{ secrets.MQTT_USERNAME }}
+          MQTT_PASSWORD: ${{ secrets.MQTT_PASSWORD }}
+          LED_DATA_PIN_NUM: ${{ secrets.LED_DATA_PIN_NUM }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # Strip the leading 'v' from the tag to get the semver string.
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          {
+            printf '[leapyboi]\n'
+            printf 'wifi_ssid = "%s"\n'      "${WIFI_SSID}"
+            printf 'wifi_pass = "%s"\n'      "${WIFI_PASS}"
+            printf 'mqtt_url = "%s"\n'       "${MQTT_URL}"
+            printf 'mqtt_client_id = "%s"\n' "${MQTT_CLIENT_ID:-leapyboi}"
+            printf 'mqtt_username = "%s"\n'  "${MQTT_USERNAME}"
+            printf 'mqtt_password = "%s"\n'  "${MQTT_PASSWORD}"
+            printf 'led_data_pin_num = %s\n' "${LED_DATA_PIN_NUM:-2}"
+            printf 'ota_firmware_url = "https://github.com/%s/releases/latest/download/leapyboi.bin"\n' \
+              "${GH_REPO}"
+            printf 'ota_version_url = "https://github.com/%s/releases/latest/download/version.txt"\n' \
+              "${GH_REPO}"
+          } > cfg.toml
+
+      - name: Build firmware (release profile)
+        run: cargo build --release
+
+      # espflash converts the ELF produced by Cargo into a raw flashable image
+      # that esptool.py / the ESP bootloader can consume.
+      - name: Save firmware binary
+        run: |
+          espflash save-image \
+            --chip esp32c6 \
+            target/riscv32imac-esp-espidf/release/leapyboi \
+            leapyboi.bin
+
+      # The device fetches this file first to decide whether a full download is
+      # needed.  Strip the leading 'v' so it matches CARGO_PKG_VERSION exactly.
+      - name: Write version.txt
+        run: echo "${GITHUB_REF_NAME#v}" > version.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            leapyboi.bin
+            version.txt
+          generate_release_notes: true

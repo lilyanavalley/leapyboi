@@ -20,7 +20,8 @@ CONFIG_MQTT_TRANSPORT_TCP=y
 CONFIG_MQTT_TASK_STACK_SIZE=6144
 
 # ── Main task ─────────────────────────────────────────────────────────────────
-CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+# Increased from 8192 to accommodate the TLS handshake stack during OTA.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
@@ -29,3 +30,18 @@ CONFIG_BOOTLOADER_LOG_LEVEL_INFO=y
 # ── Flash ─────────────────────────────────────────────────────────────────────
 # 4 MB is the most common flash size for ESP32-C6 modules.
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# ── OTA (over-the-air) updates ────────────────────────────────────────────────
+# Use the built-in two-OTA partition table: nvs + otadata + ota_0 + ota_1.
+# Each OTA slot is ~1.5 MB, which is enough for this firmware.
+# NOTE: switching from the default single-app layout requires a one-time full
+# reflash via USB; subsequent updates can be performed over-the-air.
+CONFIG_PARTITION_TABLE_TWO_OTA=y
+
+# ── HTTPS / TLS ───────────────────────────────────────────────────────────────
+# Embed the full Mozilla CA certificate bundle so the device can verify
+# GitHub's TLS certificate when downloading firmware updates.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+# Enable HTTPS support in the ESP-IDF HTTP client used by the OTA module.
+CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=y

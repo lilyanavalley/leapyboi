@@ -43,6 +43,9 @@ smart-leds = "0.4"
 # Logging façade — backed by ESP-IDF's logging facility at runtime.
 log = { version = "0.4", default-features = false }
 
+# Embedded service traits (HTTP client, IO) — used by the OTA module.
+embedded-svc = { version = "0.28", default-features = false }
+
 # Ergonomic error handling with backtraces (std is available via ESP-IDF).
 anyhow = "1"
 
