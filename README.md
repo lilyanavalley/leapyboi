@@ -165,6 +165,16 @@ The mmWave parser currently supports two frame families:
 - `0x53 0x59 ... 0x54 0x43` (MR24HPC1-style protocol)
 - `0xDF 0xF3 ... 0xE8 0xCF` (Seeed XIAO 24 GHz mmWave stream)
 
+### Optional diagnostics mode
+
+For deeper UART troubleshooting, enable feature-gated diagnostics:
+
+```bash
+cargo run --features "mmwave,mmwave-diagnostics"
+```
+
+This emits periodic parser diagnostics (bytes, parsed frames, timeout count,
+and preamble hit counters) without changing production defaults.
 
 ### Customising behaviour
 

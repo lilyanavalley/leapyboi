@@ -11,6 +11,9 @@ default = []
 # Enable support for the Seeed XIAO 24 GHz mmWave Human Static Presence Sensor.
 # Build with: cargo build --features mmwave
 mmwave = []
+# Optional high-verbosity mmWave UART diagnostics for troubleshooting.
+# Build with: cargo build --features "mmwave,mmwave-diagnostics"
+mmwave-diagnostics = ["mmwave"]
 
 [[bin]]
 name    = "leapyboi"

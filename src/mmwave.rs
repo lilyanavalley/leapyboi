@@ -32,6 +32,9 @@ use std::{
     time::Duration,
 };
 
+#[cfg(feature = "mmwave-diagnostics")]
+use std::time::Instant;
+
 use anyhow::{Context, Result};
 use esp_idf_svc::hal::{
     gpio::{AnyIOPin, InputPin, OutputPin},
@@ -62,6 +65,8 @@ const DATA_PRESENT: u8 = 0x01;
 
 /// UART read timeout in FreeRTOS ticks (≈ 1 ms/tick → ~100 ms).
 const UART_READ_TIMEOUT_TICKS: u32 = 100;
+#[cfg(feature = "mmwave-diagnostics")]
+const UART_DIAG_REPORT_INTERVAL: Duration = Duration::from_secs(5);
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -140,17 +145,67 @@ fn run_reader(
     let mut buf = [0u8; 64];
     let mut xiao_buf = Vec::<u8>::with_capacity(XIAO_FRAME_LEN);
 
+    #[cfg(feature = "mmwave-diagnostics")]
+    let mut diag_last_report = Instant::now();
+    #[cfg(feature = "mmwave-diagnostics")]
+    let mut diag_timeouts: u32 = 0;
+    #[cfg(feature = "mmwave-diagnostics")]
+    let mut diag_bytes: u32 = 0;
+    #[cfg(feature = "mmwave-diagnostics")]
+    let mut diag_frames: u32 = 0;
+    #[cfg(feature = "mmwave-diagnostics")]
+    let mut diag_expected_preambles: u32 = 0;
+    #[cfg(feature = "mmwave-diagnostics")]
+    let mut diag_xiao_preambles: u32 = 0;
+    #[cfg(feature = "mmwave-diagnostics")]
+    let mut recent2 = [0u8; 2];
 
     loop {
         match driver.read(&mut buf, UART_READ_TIMEOUT_TICKS) {
             Ok(0) => {
                 // Timeout — no bytes received within the window; loop again.
+                #[cfg(feature = "mmwave-diagnostics")]
+                {
+                    diag_timeouts = diag_timeouts.saturating_add(1);
+                }
             }
             Ok(n) => {
+                #[cfg(feature = "mmwave-diagnostics")]
+                {
+                    diag_bytes = diag_bytes.saturating_add(n as u32);
+                }
+
                 for &byte in &buf[..n] {
+                    #[cfg(feature = "mmwave-diagnostics")]
+                    {
+                        recent2[0] = recent2[1];
+                        recent2[1] = byte;
+                        if recent2 == [HEADER_1, HEADER_2] {
+                            diag_expected_preambles =
+                                diag_expected_preambles.saturating_add(1);
+                        }
+                        if recent2 == [XIAO_HEADER_1, XIAO_HEADER_2] {
+                            diag_xiao_preambles =
+                                diag_xiao_preambles.saturating_add(1);
+                        }
+                    }
+
+                    if let Some(frame) = feed_xiao_frame(&mut xiao_buf, byte) {
+                        #[cfg(feature = "mmwave-diagnostics")]
+                        {
+                            diag_frames = diag_frames.saturating_add(1);
+                        }
+                        handle_xiao_frame(frame, &event_tx, &presence);
+                    }
+
                     let (next, frame) = feed(state, byte);
                     state = next;
                     if let Some(f) = frame {
+                        #[cfg(feature = "mmwave-diagnostics")]
+                        {
+                            diag_frames = diag_frames.saturating_add(1);
+                        }
+                        trace!("mmWave frame received: ctrl={:#04x} cmd={:#04x} data={:02x?}", f.ctrl, f.cmd, f.data);
                         handle_frame(f, &event_tx, &presence);
                     }
                 }
