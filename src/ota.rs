@@ -32,7 +32,9 @@ const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// the error and continue running the current firmware.
 pub fn check_and_update(version_url: &str, firmware_url: &str) -> Result<bool> {
     if version_url.is_empty() || firmware_url.is_empty() {
-        warn!("OTA: ota_firmware_url / ota_version_url not configured — skipping");
+        warn!(
+            "OTA: ota_firmware_url / ota_version_url not set in cfg.toml — skipping update check"
+        );
         return Ok(false);
     }
 
@@ -140,7 +142,8 @@ fn stream_firmware(url: &str, update: &mut esp_idf_svc::ota::EspOtaUpdate<'_>) -
 }
 
 /// Fetch the body of a small text resource (e.g. version.txt) and return it
-/// as a `String`.
+/// as a `String`.  Returns an error if the response body exceeds 128 bytes,
+/// which is far larger than any realistic version string.
 fn fetch_text(url: &str) -> Result<String> {
     let mut client = HttpClient::wrap(http_connection()?);
 
@@ -156,13 +159,30 @@ fn fetch_text(url: &str) -> Result<String> {
         return Err(anyhow!("HTTP {} fetching {}", status, url));
     }
 
-    // Version string is at most a few dozen bytes.
-    let mut buf = [0u8; 64];
-    let n = response
-        .read(&mut buf)
-        .map_err(|e| anyhow!("HTTP read error: {e:?}"))?;
+    // Read until EOF, capped at 128 bytes.  A version string will never be
+    // longer than a few dozen bytes; anything larger is treated as an error.
+    let mut buf = [0u8; 128];
+    let mut total = 0usize;
 
-    String::from_utf8(buf[..n].to_vec()).map_err(|e| anyhow!("Non-UTF-8 version response: {e}"))
+    loop {
+        let n = response
+            .read(&mut buf[total..])
+            .map_err(|e| anyhow!("HTTP read error: {e:?}"))?;
+        if n == 0 {
+            break;
+        }
+        total += n;
+        if total == buf.len() {
+            return Err(anyhow!(
+                "version response from {} exceeded {} bytes — unexpected content",
+                url,
+                buf.len()
+            ));
+        }
+    }
+
+    String::from_utf8(buf[..total].to_vec())
+        .map_err(|e| anyhow!("Non-UTF-8 version response: {e}"))
 }
 
 /// Create an HTTPS-capable `EspHttpConnection` using the ESP-IDF bundled CA

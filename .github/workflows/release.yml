@@ -42,8 +42,11 @@ jobs:
 
     # The official esp-rs image ships the Xtensa/RISC-V Rust toolchain, the
     # ESP-IDF, espflash, and all required build tools pre-installed.
+    # Pinned to the ESP-IDF version matching .cargo/config.toml (ESP_IDF_VERSION
+    # = v5.2.1).  Update together with the ESP_IDF_VERSION env var if you
+    # upgrade ESP-IDF.
     container:
-      image: ghcr.io/esp-rs/idf-rust:esp32c6-latest
+      image: ghcr.io/esp-rs/idf-rust:esp32c6-v5.2.1
 
     permissions:
       contents: write   # needed to create the GitHub Release
@@ -78,6 +81,10 @@ jobs:
             printf 'mqtt_username = "%s"\n'  "${MQTT_USERNAME}"
             printf 'mqtt_password = "%s"\n'  "${MQTT_PASSWORD}"
             printf 'led_data_pin_num = %s\n' "${LED_DATA_PIN_NUM:-2}"
+            # The OTA URLs intentionally point to /releases/latest/download/ so
+            # that any device running an older version upgrades to the newest
+            # release.  The on-device check fetches version.txt first; if it
+            # already matches CARGO_PKG_VERSION the full download is skipped.
             printf 'ota_firmware_url = "https://github.com/%s/releases/latest/download/leapyboi.bin"\n' \
               "${GH_REPO}"
             printf 'ota_version_url = "https://github.com/%s/releases/latest/download/version.txt"\n' \
