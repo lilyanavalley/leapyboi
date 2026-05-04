@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config;
 use crate::led::LightState;
+use crate::animations::AnimationType;
 
 // ── JSON payload types ────────────────────────────────────────────────────────
 
@@ -39,6 +40,8 @@ pub struct LightCommand {
     pub state: Option<String>,
     pub brightness: Option<u8>,
     pub color: Option<RgbColor>,
+    /// HA effect name — maps to [`AnimationType`].
+    pub effect: Option<String>,
 }
 
 /// Outgoing state published back to HomeAssistant.
@@ -48,6 +51,7 @@ struct LightStatePayload<'a> {
     brightness: u8,
     color: RgbColor,
     color_mode: &'a str,
+    effect: &'a str,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
@@ -240,6 +244,15 @@ fn spawn_event_loop(
 ///
 /// The message is retained so that HA picks it up even after a restart.
 fn publish_discovery(client: &mut EspMqttClient<'static>) -> Result<()> {
+    // Build the effect_list JSON array from the animation engine.
+    let effect_list_json = {
+        let names: Vec<_> = AnimationType::effect_list()
+            .iter()
+            .map(|s| format!(r#""{}""#, s))
+            .collect();
+        format!("[{}]", names.join(", "))
+    };
+
     // Build the discovery payload as a JSON string.
     // Using format! keeps the dependency count low; switch to serde if the
     // payload grows more complex.
@@ -257,6 +270,8 @@ fn publish_discovery(client: &mut EspMqttClient<'static>) -> Result<()> {
   "brightness_scale": 255,
   "color_mode": true,
   "supported_color_modes": ["rgb"],
+  "effect": true,
+  "effect_list": {effects},
   "device": {{
     "identifiers": ["{uid}"],
     "name": "{name}",
@@ -271,6 +286,7 @@ fn publish_discovery(client: &mut EspMqttClient<'static>) -> Result<()> {
         avail = config::AVAILABILITY_TOPIC,
         model = config::DEVICE_MODEL,
         mfr = config::DEVICE_MANUFACTURER,
+        effects = effect_list_json,
     );
 
     client
@@ -295,6 +311,7 @@ fn publish_state(client: &mut EspMqttClient<'static>, state: &LightState) -> Res
             b: state.b,
         },
         color_mode: "rgb",
+        effect: state.animation.as_effect_name(),
     };
 
     let json = serde_json::to_string(&payload).context("failed to serialise light state")?;

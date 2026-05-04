@@ -29,12 +29,14 @@ mod config;
 mod led;
 mod mqtt;
 mod wifi;
+mod animations;
 
 #[cfg(feature = "mmwave")]
 mod mmwave;
 
 use led::LedController;
 use mqtt::LightCommand;
+use animations::AnimationType;
 
 fn main() -> Result<()> {
     // Patch the runtime — must be called before anything else.
@@ -144,6 +146,9 @@ fn main() -> Result<()> {
             mqtt.publish_presence(detected)?;
         }
 
+        // Advance the animation by one tick and push the frame to the ring.
+        led.tick()?;
+
         std::thread::sleep(Duration::from_millis(50));
     }
 }
@@ -170,6 +175,14 @@ where
         led.state.b = color.b;
     }
 
+    if let Some(ref effect) = cmd.effect {
+        let new_anim = AnimationType::from_effect_name(effect);
+        if new_anim != led.state.animation {
+            led.state.animation = new_anim;
+            led.reset_phase(); // start the new animation cleanly from frame 0
+        }
+    }
+
     led.refresh()
 }
 
@@ -177,8 +190,8 @@ where
 
 /// Apply a mmWave presence event to the LED ring.
 ///
-/// - `Detected` → turn the ring on with the configured presence colour.
-/// - `Gone`     → switch to the no-presence colour (or turn off if `(0, 0, 0)`).
+/// - `Detected` → turn the ring on with the configured presence colour and animation.
+/// - `Gone`     → switch to the no-presence colour/animation (or turn off if `(0, 0, 0)`).
 #[cfg(feature = "mmwave")]
 fn apply_presence_event<D>(
     led: &mut LedController<D>,
@@ -196,6 +209,7 @@ where
             led.state.g = g;
             led.state.b = b;
             led.state.brightness = config::PRESENCE_BRIGHTNESS;
+            led.state.animation = AnimationType::from_effect_name(config::PRESENCE_ANIMATION);
         }
         mmwave::PresenceEvent::Gone => {
             let (r, g, b) = config::NO_PRESENCE_COLOR;
@@ -205,7 +219,9 @@ where
             led.state.g = g;
             led.state.b = b;
             led.state.brightness = config::NO_PRESENCE_BRIGHTNESS;
+            led.state.animation = AnimationType::from_effect_name(config::NO_PRESENCE_ANIMATION);
         }
     }
+    led.reset_phase(); // restart the animation from the beginning on every presence change
     led.refresh()
 }

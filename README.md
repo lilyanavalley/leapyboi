@@ -95,6 +95,95 @@ cargo run --release
 
 ---
 
+---
+
+## LED animations
+
+The ring supports several built-in animation effects selectable from
+HomeAssistant or via raw MQTT.
+
+### Available effects
+
+| Effect name | Description |
+|-------------|-------------|
+| `solid`     | All LEDs show a single static colour (default) |
+| `rainbow`   | A rotating rainbow hue-wheel fills all LEDs |
+| `spinning`  | A single bright pixel (plus short fading tail) circles the ring |
+| `breathe`   | All LEDs fade in and out using the current colour |
+| `custom`    | User-supplied frame animation — see below |
+
+### Selecting an effect in HomeAssistant
+
+The **Leapyboi Ring** light entity in HA shows an **Effect** dropdown
+alongside the usual colour/brightness controls.  Pick any effect from the list
+and it takes effect immediately.
+
+You can also send the effect directly over MQTT:
+
+```
+Topic:   leapyboi/light/set
+Payload: {"state":"ON","effect":"rainbow"}
+```
+
+### Tuning animation speed
+
+All timing constants live in `src/config.rs` — no other file needs changing:
+
+| Constant | Default | Effect on… |
+|----------|---------|------------|
+| `ANIM_RAINBOW_SPEED` | `2` | Hue steps per tick; higher = faster rotation |
+| `ANIM_SPINNING_TICKS_PER_PIXEL` | `2` | Ticks between pixel moves; lower = faster spin |
+| `ANIM_BREATHE_SPEED` | `2` | Phase steps per tick; higher = faster breathing |
+| `ANIM_CUSTOM_TICKS_PER_FRAME` | `4` | Ticks per frame of the custom animation |
+
+One tick ≈ 50 ms (the main-loop period).
+
+---
+
+## Custom animation via `animation.png`
+
+You can bake a fully custom pixel animation into the firmware by placing an
+image file called `animation.png` in the project root (next to `Cargo.toml`).
+
+### Image format
+
+| Dimension | Meaning |
+|-----------|---------|
+| Width     | **Must equal `LED_COUNT`** (default: 12) — one pixel per LED |
+| Height    | Number of animation frames — as many as you like |
+| Colour    | 8-bit **RGB** or **RGBA** (alpha is ignored) |
+
+Each row in the image is one frame; rows are played top-to-bottom and loop
+continuously.
+
+### Creating an animation
+
+1. Open any image editor (GIMP, Aseprite, Photoshop, etc.)
+2. Create a new image that is **12 × N** pixels (or `LED_COUNT × N`)
+3. Draw each frame as a row of 12 pixels
+4. Export as `animation.png` (8-bit RGB or RGBA) and place it in the project root
+5. Rebuild and reflash:
+
+```bash
+cargo build --release      # build.rs decodes the PNG and bakes it in
+cargo run  --release       # flash + open serial monitor
+```
+
+If the image dimensions are wrong the build will fail with a helpful error.
+
+### Sharing animations
+
+Because the animation is a standard PNG file you can share it directly with
+other Leapyboi users.  Post the file anywhere images are shared; recipients
+drop it into their project root and reflash.
+
+### Removing the custom animation
+
+Delete `animation.png` and rebuild.  The `custom` effect will disappear from
+the HomeAssistant dropdown automatically.
+
+---
+
 ## mmWave presence sensor *(optional)*
 
 The [Seeed XIAO 24 GHz mmWave Human Static Presence Sensor](https://www.seeedstudio.com/24GHz-mmWave-Sensor-Human-Static-Presence-Module-Lite-p-5524.html)
@@ -104,8 +193,8 @@ The [Seeed XIAO 24 GHz mmWave Human Static Presence Sensor](https://www.seeedstu
 
 | State | LED ring behaviour |
 |-------|--------------------|
-| Person **detected** | Turns **on** with warm-white (configurable in `src/config.rs`) |
-| **No** person detected | Switches to a dim blue tint (or turns off if `NO_PRESENCE_COLOR = (0,0,0)`) |
+| Person **detected** | Ring turns **on** with the configured presence colour and animation |
+| **No** person detected | Ring switches to the no-presence colour and animation (or turns off) |
 
 A `binary_sensor` **Leapyboi Presence** entity also appears in HomeAssistant
 via MQTT discovery.  HomeAssistant light commands continue to work normally —
@@ -147,14 +236,14 @@ cargo run --release --features mmwave
 
 | Constant | Default | Meaning |
 |----------|---------|---------|
-| `PRESENCE_COLOR` | `(255, 200, 100)` | LED colour when someone is present |
+| `PRESENCE_COLOR` | `(255, 0, 0)` | LED colour when someone is present |
 | `PRESENCE_BRIGHTNESS` | `200` | Brightness (0-255) when present |
-| `NO_PRESENCE_COLOR` | `(0, 0, 30)` | LED colour when no one is detected |
+| `PRESENCE_ANIMATION` | `"rainbow"` | Animation played when present |
+| `NO_PRESENCE_COLOR` | `(255, 255, 0)` | LED colour when no one is detected |
 | `NO_PRESENCE_BRIGHTNESS` | `50` | Brightness when no one is detected |
+| `NO_PRESENCE_ANIMATION` | `"breathe"` | Animation played when no one is detected |
 
 Set `NO_PRESENCE_COLOR = (0, 0, 0)` to turn the ring **off** when the room is empty.
-
-All constants live in `src/config.rs` under the `mmwave` feature gate.
 ## Debug logging
 
 On startup, the firmware logs which MQTT authentication mode is active.
@@ -201,18 +290,20 @@ address on port 1883.
 ```
 leapyboi/
 ├── src/
-│   ├── main.rs      # Boot sequence and main loop
-│   ├── config.rs    # Compile-time constants (pin, topic names, …)
-│   ├── led.rs       # WS2812B ring controller (generic over SmartLedsWrite)
-│   ├── wifi.rs      # WiFi connection helper
-│   ├── mqtt.rs      # MQTT client, HA discovery, command / state handling
-│   └── mmwave.rs    # mmWave UART driver + frame parser (feature: mmwave)
-├── build.rs         # Reads cfg.toml, calls embuild for ESP-IDF
+│   ├── main.rs        # Boot sequence and main loop
+│   ├── config.rs      # Compile-time constants (pin, topic names, animation speeds, …)
+│   ├── animations.rs  # Animation engine (solid, rainbow, spinning, breathe, custom)
+│   ├── led.rs         # WS2812B ring controller (generic over SmartLedsWrite)
+│   ├── wifi.rs        # WiFi connection helper
+│   ├── mqtt.rs        # MQTT client, HA discovery, command / state handling
+│   └── mmwave.rs      # mmWave UART driver + frame parser (feature: mmwave)
+├── animation.png       # Optional: custom animation (width=LED_COUNT, height=frames)
+├── build.rs            # Reads cfg.toml; decodes animation.png; calls embuild for ESP-IDF
 ├── Cargo.toml
 ├── sdkconfig.defaults  # ESP-IDF Kconfig overrides
 ├── cfg.toml.example    # Credential template (committed)
 └── .cargo/
-    └── config.toml  # Build target, linker, runner
+    └── config.toml     # Build target, linker, runner
 ```
 
 ---
@@ -225,6 +316,9 @@ leapyboi/
 | Data GPIO pin | `cfg.toml` → `led_data_pin_num` |
 | MQTT topics | `src/config.rs` → `HA_DISCOVERY_TOPIC`, `COMMAND_TOPIC`, … |
 | Device name shown in HA | `src/config.rs` → `DEVICE_NAME` |
+| Animation speeds | `src/config.rs` → `ANIM_RAINBOW_SPEED`, `ANIM_BREATHING_SPEED`, … |
+| Custom animation frames | Place `animation.png` in project root (width=`LED_COUNT`, height=frames) |
 | ESP-IDF version | `.cargo/config.toml` → `ESP_IDF_VERSION` |
 | mmWave UART pins | `src/main.rs` → `peripherals.pins.gpio4 / gpio5` |
 | mmWave LED colours | `src/config.rs` → `PRESENCE_COLOR`, `NO_PRESENCE_COLOR`, … |
+| mmWave LED animations | `src/config.rs` → `PRESENCE_ANIMATION`, `NO_PRESENCE_ANIMATION` |

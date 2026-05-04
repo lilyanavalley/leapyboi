@@ -54,3 +54,5 @@ embuild = { version = "=0.31.4", features = ["espidf"] }
 # Used in build.rs to parse cfg.toml.
 toml  = "0.8"
 serde = { version = "1", features = ["derive"] }
+# Used in build.rs to decode animation.png into a firmware-baked const array.
+png = "0.17"

@@ -4,10 +4,14 @@
 /// track of the current `LightState` so that callers can update individual
 /// fields and then call [`LedController::refresh`] to push the change to
 /// the hardware.
+///
+/// For animated effects, call [`LedController::tick`] from the main loop on
+/// every iteration instead of (or in addition to) [`LedController::refresh`].
 
 use anyhow::{Context, Result};
 use smart_leds::{SmartLedsWrite, RGB8};
 
+use crate::animations::{self, AnimationType};
 use crate::config::LED_COUNT;
 
 // ── Public state type ─────────────────────────────────────────────────────────
@@ -15,7 +19,8 @@ use crate::config::LED_COUNT;
 /// Logical state of the LED ring.
 ///
 /// This mirrors the HomeAssistant `light` entity state.  Mutate the fields
-/// you need, then call [`LedController::refresh`] to apply the change.
+/// you need, then call [`LedController::refresh`] to apply the change, or
+/// call [`LedController::tick`] from the main loop to advance animated effects.
 #[derive(Debug, Clone, Copy)]
 pub struct LightState {
     /// Whether the ring is on.
@@ -28,6 +33,8 @@ pub struct LightState {
     pub g: u8,
     /// Blue channel (0-255).
     pub b: u8,
+    /// Active animation / effect.
+    pub animation: AnimationType,
 }
 
 impl Default for LightState {
@@ -38,6 +45,7 @@ impl Default for LightState {
             r: 255,
             g: 255,
             b: 255,
+            animation: AnimationType::default(),
         }
     }
 }
@@ -57,6 +65,8 @@ where
     driver: D,
     /// Current logical state; can be read or written directly.
     pub state: LightState,
+    /// Monotonically-increasing tick counter used by animation functions.
+    phase: u32,
 }
 
 impl<D> LedController<D>
@@ -69,32 +79,54 @@ where
         Self {
             driver,
             state: LightState::default(),
+            phase: 0,
         }
     }
 
-    /// Push `self.state` to the physical LEDs.
+    /// Push `self.state` to the physical LEDs using the current animation frame.
     ///
-    /// Call this after mutating any field of `self.state`.
+    /// Call this after mutating any field of `self.state` for an immediate
+    /// update.  For smooth animated effects call [`tick`](Self::tick) from the
+    /// main loop instead.
     pub fn refresh(&mut self) -> Result<()> {
-        let pixels: Vec<RGB8> = if self.state.on {
-            // Scale each channel by brightness / 255.
-            let scale = self.state.brightness as f32 / 255.0;
-            let r = (self.state.r as f32 * scale) as u8;
-            let g = (self.state.g as f32 * scale) as u8;
-            let b = (self.state.b as f32 * scale) as u8;
-            vec![RGB8::new(r, g, b); LED_COUNT]
-        } else {
-            vec![RGB8::new(0, 0, 0); LED_COUNT]
-        };
-
+        let pixels = animations::compute_frame(
+            self.state.r,
+            self.state.g,
+            self.state.b,
+            self.state.brightness,
+            self.state.on,
+            self.state.animation,
+            self.phase,
+        );
         self.driver
             .write(pixels.into_iter())
             .context("failed to write LED pixels")
     }
 
+    /// Advance the animation phase by one step and write the new frame.
+    ///
+    /// Call this on every main-loop iteration (typically every ~50 ms) to
+    /// drive smooth animation.  The phase is only incremented when the ring
+    /// is on, so static/off states have no overhead.
+    pub fn tick(&mut self) -> Result<()> {
+        if self.state.on {
+            self.phase = self.phase.wrapping_add(1);
+        }
+        self.refresh()
+    }
+
+    /// Reset the animation phase to zero.
+    ///
+    /// Useful when switching animations or applying a new mmWave presence
+    /// event so the new animation always starts from the beginning.
+    pub fn reset_phase(&mut self) {
+        self.phase = 0;
+    }
+
     /// Turn all LEDs off and update `self.state.on`.
     pub fn all_off(&mut self) -> Result<()> {
         self.state.on = false;
+        self.phase = 0;
         self.refresh()
     }
 
