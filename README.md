@@ -27,13 +27,23 @@ presence entity also appears in HomeAssistant.
 **Default wiring**
 
 ```
-ESP32-C6 GPIO 8  ──[330Ω]──▶  Ring DIN
+ESP32-C6 GPIO 2  ──[330Ω]──▶  Ring DIN
 ESP32-C6 GND     ────────────  Ring GND
 5V supply        ────────────  Ring 5V
 ```
 
+For Seeed XIAO ESP32-C6, GPIO 2 maps to header pin D0.
+
 Change the pin in `cfg.toml` → `led_data_pin_num` if you use a different GPIO.
 Any RMT-capable output pin works.
+
+### Boot LED self-test
+
+Before WiFi starts, firmware now runs a quick LED self-test sequence
+(red → green → blue → white). If you do not see this sequence, the issue is
+in the LED transport path (pin assignment/wiring/signal level), not MQTT.
+
+The configured LED GPIO is also printed on boot to make pin mismatches obvious.
 
 ---
 
@@ -119,16 +129,21 @@ The sensor operates at **3.3 V** and communicates via **UART at 115 200 baud**.
 ```
 Sensor 3V3  ────────────  ESP32-C6 3V3
 Sensor GND  ────────────  ESP32-C6 GND
-Sensor TX   ────────────  ESP32-C6 GPIO 4  (ESP RX ← sensor data stream)
-Sensor RX   ────────────  ESP32-C6 GPIO 5  (ESP TX → sensor, for config)
+Sensor TX   ────────────  ESP32-C6 GPIO 17 (ESP RX ← sensor data stream)
+Sensor RX   ────────────  ESP32-C6 GPIO 16 (ESP TX → sensor, for config)
 ```
 
-> **Note:** `Sensor RX` / `ESP GPIO 5` is only needed if you want to send
+> **Note:** `Sensor RX` / `ESP GPIO 16` is only needed if you want to send
 > configuration commands to the sensor.  For basic presence detection it can
 > be left unconnected.
 
-Change the GPIO numbers in `src/main.rs` (`peripherals.pins.gpio4 / gpio5`)
+Change the GPIO numbers in `src/main.rs` (`peripherals.pins.gpio16 / gpio17`)
 to match your actual wiring.
+
+For Seeed XIAO ESP32-C6, the firmware defaults to:
+
+- `GPIO16` (D6) as ESP TX → sensor RX
+- `GPIO17` (D7) as ESP RX ← sensor TX
 
 ### Enabling the feature
 
@@ -142,6 +157,14 @@ cargo build --release --features mmwave
 # Build, flash, and monitor
 cargo run --release --features mmwave
 ```
+
+### Supported UART frame protocols
+
+The mmWave parser currently supports two frame families:
+
+- `0x53 0x59 ... 0x54 0x43` (MR24HPC1-style protocol)
+- `0xDF 0xF3 ... 0xE8 0xCF` (Seeed XIAO 24 GHz mmWave stream)
+
 
 ### Customising behaviour
 
@@ -226,5 +249,5 @@ leapyboi/
 | MQTT topics | `src/config.rs` → `HA_DISCOVERY_TOPIC`, `COMMAND_TOPIC`, … |
 | Device name shown in HA | `src/config.rs` → `DEVICE_NAME` |
 | ESP-IDF version | `.cargo/config.toml` → `ESP_IDF_VERSION` |
-| mmWave UART pins | `src/main.rs` → `peripherals.pins.gpio4 / gpio5` |
+| mmWave UART pins | `src/main.rs` → `peripherals.pins.gpio16 / gpio17` |
 | mmWave LED colours | `src/config.rs` → `PRESENCE_COLOR`, `NO_PRESENCE_COLOR`, … |

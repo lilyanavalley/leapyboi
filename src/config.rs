@@ -57,7 +57,7 @@ pub fn led_data_pin_num() -> i32 {
 }
 
 /// Number of LEDs in the ring.  Change to match your specific ring module.
-pub const LED_COUNT: usize = 12;
+pub const LED_COUNT: usize = 24;
 
 // ── HomeAssistant MQTT topics ─────────────────────────────────────────────────
 

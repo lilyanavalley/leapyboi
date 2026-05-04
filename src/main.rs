@@ -36,6 +36,24 @@ mod mmwave;
 use led::LedController;
 use mqtt::LightCommand;
 
+fn run_startup_led_self_test<D>(led: &mut LedController<D>) -> Result<()>
+where
+    D: SmartLedsWrite<Color = RGB8>,
+    D::Error: std::error::Error + Send + Sync + 'static,
+{
+    // Fast RGB pattern confirms the data pin and WS2812 signalling path.
+    let steps = [(24, 0, 0), (0, 24, 0), (0, 0, 24), (12, 12, 12)];
+
+    for (r, g, b) in steps {
+        led.status_color(r, g, b)?;
+        std::thread::sleep(Duration::from_millis(180));
+    }
+
+    led.all_off()?;
+    std::thread::sleep(Duration::from_millis(120));
+    Ok(())
+}
+
 fn main() -> Result<()> {
     // Patch the runtime — must be called before anything else.
     // See: https://github.com/esp-rs/esp-idf-template/issues/71
@@ -55,17 +73,17 @@ fn main() -> Result<()> {
     // GPIO pin and RMT channel are consumed (moved) here; they live for the
     // remainder of main(), which is effectively 'static on a microcontroller.
     let rmt_channel = peripherals.rmt.channel0;
+    let led_pin_num = config::led_data_pin_num();
+    info!("LED data output pin configured: GPIO{}", led_pin_num);
     // Runtime-selected output pin so wiring can be changed in config.rs.
-    let led_pin = unsafe { AnyOutputPin::new(config::led_data_pin_num()) };
+    let led_pin = unsafe { AnyOutputPin::new(led_pin_num) };
 
     let ws2812_driver =
         LedPixelEsp32Rmt::<RGB8, LedPixelColorGrb24>::new(rmt_channel, led_pin)?;
     let mut led = LedController::new(ws2812_driver);
 
-    // Power-on indicator: brief dim white flash.
-    led.status_color(15, 15, 15)?;
-    std::thread::sleep(Duration::from_millis(300));
-    led.all_off()?;
+    // Power-on self-test: verify LED transport before networking starts.
+    run_startup_led_self_test(&mut led)?;
 
     // ── WiFi ──────────────────────────────────────────────────────────────────
     info!("Connecting to WiFi…");
@@ -110,8 +128,8 @@ fn main() -> Result<()> {
         // Adjust these pins in src/main.rs to match your physical wiring.
         mmwave::start(
             peripherals.uart1,
-            peripherals.pins.gpio5, // ESP TX → sensor RX
-            peripherals.pins.gpio4, // ESP RX ← sensor TX
+            peripherals.pins.gpio16, // ESP TX → sensor RX
+            peripherals.pins.gpio17, // ESP RX ← sensor TX
         )?
     };
 

@@ -39,7 +39,7 @@ use esp_idf_svc::hal::{
     uart::{config::Config as UartConfig, Uart, UartDriver},
     units::Hertz,
 };
-use log::{error, info, warn};
+use log::{error, info, trace, warn};
 
 // ── Frame constants ───────────────────────────────────────────────────────────
 
@@ -47,6 +47,14 @@ const HEADER_1: u8 = 0x53;
 const HEADER_2: u8 = 0x59;
 const FOOTER_1: u8 = 0x54;
 const FOOTER_2: u8 = 0x43;
+
+// Observed on Seeed 24GHz mmWave for XIAO module:
+// fixed 9-byte packets: DF F3 <type> <status> <b0> <b1> <b2> E8 CF
+const XIAO_HEADER_1: u8 = 0xDF;
+const XIAO_HEADER_2: u8 = 0xF3;
+const XIAO_FOOTER_1: u8 = 0xE8;
+const XIAO_FOOTER_2: u8 = 0xCF;
+const XIAO_FRAME_LEN: usize = 9;
 
 const CTRL_PRESENCE: u8 = 0x80;
 const CMD_PRESENCE: u8 = 0x81;
@@ -68,8 +76,6 @@ pub enum PresenceEvent {
 
 /// Owned handle to the running mmWave sensor session.
 pub struct MmwaveHandle {
-    /// Atomically updated presence flag — set `true` when someone is present.
-    pub presence_detected: Arc<AtomicBool>,
     events: mpsc::Receiver<PresenceEvent>,
 }
 
@@ -119,10 +125,7 @@ where
         .expect("failed to spawn mmWave reader thread");
 
     info!("mmWave sensor initialised");
-    Ok(MmwaveHandle {
-        presence_detected: presence,
-        events: event_rx,
-    })
+    Ok(MmwaveHandle { events: event_rx })
 }
 
 // ── Background reader ─────────────────────────────────────────────────────────
@@ -135,6 +138,8 @@ fn run_reader(
     info!("mmWave reader thread started");
     let mut state = ParseState::WaitH1;
     let mut buf = [0u8; 64];
+    let mut xiao_buf = Vec::<u8>::with_capacity(XIAO_FRAME_LEN);
+
 
     loop {
         match driver.read(&mut buf, UART_READ_TIMEOUT_TICKS) {
@@ -155,7 +160,126 @@ fn run_reader(
                 std::thread::sleep(Duration::from_millis(100));
             }
         }
+
+        #[cfg(feature = "mmwave-diagnostics")]
+        {
+            if diag_last_report.elapsed() >= UART_DIAG_REPORT_INTERVAL {
+                info!(
+                    "mmWave diagnostics: bytes={} frames={} read_timeouts={} preambles(expected_5359={}, xiao_df_f3={}) over {:?}",
+                    diag_bytes,
+                    diag_frames,
+                    diag_timeouts,
+                    diag_expected_preambles,
+                    diag_xiao_preambles,
+                    UART_DIAG_REPORT_INTERVAL
+                );
+                diag_last_report = Instant::now();
+                diag_timeouts = 0;
+                diag_bytes = 0;
+                diag_frames = 0;
+                diag_expected_preambles = 0;
+                diag_xiao_preambles = 0;
+            }
+        }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct XiaoFrame {
+    frame_type: u8,
+    status: u8,
+    b0: u8,
+    b1: u8,
+    b2: u8,
+}
+
+fn feed_xiao_frame(buf: &mut Vec<u8>, byte: u8) -> Option<XiaoFrame> {
+    if buf.is_empty() {
+        if byte == XIAO_HEADER_1 {
+            buf.push(byte);
+        }
+        return None;
+    }
+
+    if buf.len() == 1 {
+        if byte == XIAO_HEADER_2 {
+            buf.push(byte);
+        } else if byte == XIAO_HEADER_1 {
+            buf.clear();
+            buf.push(byte);
+        } else {
+            buf.clear();
+        }
+        return None;
+    }
+
+    buf.push(byte);
+    if buf.len() < XIAO_FRAME_LEN {
+        return None;
+    }
+
+    let parsed = if buf[7] == XIAO_FOOTER_1 && buf[8] == XIAO_FOOTER_2 {
+        Some(XiaoFrame {
+            frame_type: buf[2],
+            status: buf[3],
+            b0: buf[4],
+            b1: buf[5],
+            b2: buf[6],
+        })
+    } else {
+        None
+    };
+
+    // Re-sync on next potential header.
+    if byte == XIAO_HEADER_1 {
+        buf.clear();
+        buf.push(byte);
+    } else {
+        buf.clear();
+    }
+
+    parsed
+}
+
+fn emit_presence_if_changed(
+    detected: bool,
+    event_tx: &mpsc::Sender<PresenceEvent>,
+    presence: &AtomicBool,
+) {
+    if detected != presence.load(Ordering::Relaxed) {
+        presence.store(detected, Ordering::Relaxed);
+        let event = if detected {
+            PresenceEvent::Detected
+        } else {
+            PresenceEvent::Gone
+        };
+        info!("mmWave: presence {}", if detected { "detected" } else { "gone" });
+        if event_tx.send(event).is_err() {
+            warn!("mmWave: event channel closed — dropping presence event");
+        }
+    }
+}
+
+fn handle_xiao_frame(
+    frame: XiaoFrame,
+    event_tx: &mpsc::Sender<PresenceEvent>,
+    presence: &AtomicBool,
+) {
+    let detected = xiao_detected_from_status(frame.status);
+    trace!(
+        "mmWave XIAO frame: type={:#04x} status={:#04x} b0={:#04x} b1={:#04x} b2={:#04x}",
+        frame.frame_type,
+        frame.status,
+        frame.b0,
+        frame.b1,
+        frame.b2
+    );
+    emit_presence_if_changed(detected, event_tx, presence);
+}
+
+fn xiao_detected_from_status(status: u8) -> bool {
+    // Observed status values (0x08 / 0x18) suggest bit 0x10 carries occupancy.
+    (status & 0x10) != 0
 }
 
 fn handle_frame(
@@ -165,19 +289,15 @@ fn handle_frame(
 ) {
     if frame.ctrl == CTRL_PRESENCE && frame.cmd == CMD_PRESENCE && frame.data.len() == 1 {
         let detected = frame.data[0] == DATA_PRESENT;
-        // Only emit an event when the state actually changes.
-        if detected != presence.load(Ordering::Relaxed) {
-            presence.store(detected, Ordering::Relaxed);
-            let event = if detected {
-                PresenceEvent::Detected
-            } else {
-                PresenceEvent::Gone
-            };
-            info!("mmWave: presence {}", if detected { "detected" } else { "gone" });
-            if event_tx.send(event).is_err() {
-                warn!("mmWave: event channel closed — dropping presence event");
-            }
-        }
+        emit_presence_if_changed(detected, event_tx, presence);
+    } else {
+        trace!(
+            "mmWave: unhandled frame ctrl={:#04x} cmd={:#04x} len={} data={:02x?}",
+            frame.ctrl,
+            frame.cmd,
+            frame.data.len(),
+            frame.data
+        );
     }
 }
 
@@ -298,5 +418,51 @@ fn feed(state: ParseState, byte: u8) -> (ParseState, Option<ParsedFrame>) {
                 (WaitH1, None)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn parses_single_xiao_frame() {
+        let mut buf = Vec::new();
+        let bytes = [0xDF, 0xF3, 0x20, 0x18, 0x01, 0x0B, 0x08, 0xE8, 0xCF];
+        let mut parsed = None;
+
+        for b in bytes {
+            parsed = super::feed_xiao_frame(&mut buf, b);
+        }
+
+        let frame = parsed.expect("expected XIAO frame");
+        assert_eq!(frame.frame_type, 0x20);
+        assert_eq!(frame.status, 0x18);
+        assert_eq!((frame.b0, frame.b1, frame.b2), (0x01, 0x0B, 0x08));
+    }
+
+    #[test]
+    fn xiao_parser_resyncs_after_bad_frame() {
+        let mut buf = Vec::new();
+        // First frame has bad footer; second frame is valid.
+        let bytes = [
+            0xDF, 0xF3, 0x20, 0x18, 0x01, 0x0B, 0x08, 0x00, 0x00,
+            0xDF, 0xF3, 0x20, 0x08, 0x01, 0x0B, 0x01, 0xE8, 0xCF,
+        ];
+
+        let mut parsed = None;
+        for b in bytes {
+            if let Some(frame) = super::feed_xiao_frame(&mut buf, b) {
+                parsed = Some(frame);
+            }
+        }
+
+        let frame = parsed.expect("expected resynced XIAO frame");
+        assert_eq!(frame.status, 0x08);
+        assert_eq!((frame.b0, frame.b1, frame.b2), (0x01, 0x0B, 0x01));
+    }
+
+    #[test]
+    fn xiao_status_bitmaps_to_presence() {
+        assert!(super::xiao_detected_from_status(0x18));
+        assert!(!super::xiao_detected_from_status(0x08));
     }
 }

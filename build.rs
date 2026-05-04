@@ -50,7 +50,7 @@ fn default_client_id() -> String {
 }
 
 fn default_led_data_pin_num() -> i32 {
-    8
+    2
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
@@ -85,11 +85,12 @@ fn main() {
         emit_env("MQTT_CLIENT_ID", "leapyboi");
         emit_env("MQTT_USERNAME", "");
         emit_env("MQTT_PASSWORD", "");
-        emit_env("LED_DATA_PIN_NUM", "8");
+        emit_env("LED_DATA_PIN_NUM", "2");
 
         println!(
-            "cargo:warning=cfg.toml not found — \
-             copy cfg.toml.example to cfg.toml and fill in your WiFi / MQTT settings."
+              "cargo:warning=cfg.toml not found — \
+               copy cfg.toml.example to cfg.toml and fill in your WiFi / MQTT settings \
+               (default LED pin is GPIO2, which maps to D0 on XIAO ESP32-C6)."
         );
     }
 

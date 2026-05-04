@@ -81,7 +81,11 @@ impl MqttHandle {
         publish_discovery(&mut self.client)?;
 
         #[cfg(feature = "mmwave")]
-        publish_presence_discovery(&mut self.client)?;
+        {
+            publish_presence_discovery(&mut self.client)?;
+            // Ensure HA has a defined initial state before the first sensor frame.
+            self.publish_presence(false)?;
+        }
 
         self.client
             .publish(
@@ -98,7 +102,7 @@ impl MqttHandle {
 
     /// Publish the current presence state (`"ON"` / `"OFF"`) to HomeAssistant.
     #[cfg(feature = "mmwave")]
-    pub fn publish_presence(&mut self, detected: bool) -> Result<()> {
+    pub fn publish_presence(&mut self, detected: bool) -> Result<u32> {
         self.client
             .publish(
                 config::MMWAVE_STATE_TOPIC,
@@ -314,7 +318,7 @@ fn publish_state(client: &mut EspMqttClient<'static>, state: &LightState) -> Res
 ///
 /// Called from [`MqttHandle::on_connected`] whenever the feature is enabled.
 #[cfg(feature = "mmwave")]
-fn publish_presence_discovery(client: &mut EspMqttClient<'static>) -> Result<()> {
+fn publish_presence_discovery(client: &mut EspMqttClient<'static>) -> Result<u32> {
     let payload = format!(
         r#"{{
   "name": "Leapyboi Presence",
