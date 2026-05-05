@@ -288,13 +288,15 @@ fn spawn_event_loop(
                                     Err(e) => { warn!("MQTT: invalid light command — {e}"); }
                                 }
                             } else if topic == config::ANIMATIONS_COMMAND_TOPIC {
-                                let enabled = data.eq_ignore_ascii_case(b"on");
-                                sw_tx.send(SwitchCommand::Animations(enabled)).ok();
+                                if let Some(enabled) = parse_on_off(data, topic) {
+                                    sw_tx.send(SwitchCommand::Animations(enabled)).ok();
+                                }
                             } else {
                                 #[cfg(feature = "mmwave")]
                                 if topic == config::MMWAVE_ENABLE_COMMAND_TOPIC {
-                                    let enabled = data.eq_ignore_ascii_case(b"on");
-                                    sw_tx.send(SwitchCommand::Mmwave(enabled)).ok();
+                                    if let Some(enabled) = parse_on_off(data, topic) {
+                                        sw_tx.send(SwitchCommand::Mmwave(enabled)).ok();
+                                    }
                                 }
                             }
                         }
@@ -436,6 +438,25 @@ fn publish_presence_discovery(client: &mut EspMqttClient<'static>) -> Result<()>
             payload.as_bytes(),
         )
         .context("failed to publish presence discovery")
+}
+
+/// Parse a switch payload byte string into a boolean.
+///
+/// Accepts `"ON"` (case-insensitive) as `true` and `"OFF"` as `false`.
+/// Logs a warning and returns `None` for any other value so that garbage
+/// payloads are surfaced in the serial log without silently toggling state.
+fn parse_on_off(data: &[u8], topic: &str) -> Option<bool> {
+    if data.eq_ignore_ascii_case(b"on") {
+        Some(true)
+    } else if data.eq_ignore_ascii_case(b"off") {
+        Some(false)
+    } else {
+        warn!(
+            "MQTT: ignored unrecognised payload on {topic}: {:?} (expected ON or OFF)",
+            core::str::from_utf8(data).unwrap_or("<invalid UTF-8>")
+        );
+        None
+    }
 }
 
 /// Publish a HomeAssistant MQTT discovery message for the animations `switch` entity.
