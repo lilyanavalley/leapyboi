@@ -35,7 +35,7 @@ mod animations;
 mod mmwave;
 
 use led::LedController;
-use mqtt::LightCommand;
+use mqtt::{LightCommand, SwitchCommand};
 use animations::AnimationType;
 
 fn main() -> Result<()> {
@@ -119,6 +119,18 @@ fn main() -> Result<()> {
 
     info!("Ready — waiting for HomeAssistant commands on {}", config::COMMAND_TOPIC);
 
+    // ── Runtime feature flags ─────────────────────────────────────────────────
+    // Both features start enabled; users can toggle them from HA or raw MQTT.
+    let mut animations_enabled = true;
+    #[cfg(feature = "mmwave")]
+    let mut mmwave_enabled = true;
+
+    // Publish initial switch states so HA shows the correct toggle positions
+    // immediately after boot (before the user has toggled anything).
+    mqtt.publish_animations_state(animations_enabled)?;
+    #[cfg(feature = "mmwave")]
+    mqtt.publish_mmwave_enable_state(mmwave_enabled)?;
+
     // ── Main loop ─────────────────────────────────────────────────────────────
     loop {
         // Re-subscribe after an MQTT reconnect (e.g. broker restart, WiFi drop).
@@ -127,6 +139,10 @@ fn main() -> Result<()> {
             if let Err(e) = mqtt.on_connected() {
                 log::error!("on_connected error: {e:?}");
             }
+            // Re-publish switch states so HA is back in sync after reconnect.
+            mqtt.publish_animations_state(animations_enabled)?;
+            #[cfg(feature = "mmwave")]
+            mqtt.publish_mmwave_enable_state(mmwave_enabled)?;
         }
 
         // Drain all queued HA light commands.
@@ -136,18 +152,51 @@ fn main() -> Result<()> {
             mqtt.publish_state(&led.state)?;
         }
 
+        // Drain all queued runtime switch commands.
+        while let Some(sw) = mqtt.try_recv_switch() {
+            match sw {
+                SwitchCommand::Animations(enabled) => {
+                    info!("Animations {}", if enabled { "enabled" } else { "disabled" });
+                    animations_enabled = enabled;
+                    mqtt.publish_animations_state(animations_enabled)?;
+                }
+                #[cfg(feature = "mmwave")]
+                SwitchCommand::Mmwave(enabled) => {
+                    info!("mmWave {}", if enabled { "enabled" } else { "disabled" });
+                    mmwave_enabled = enabled;
+                    mqtt.publish_mmwave_enable_state(mmwave_enabled)?;
+                }
+            }
+        }
+
         // Drain all queued mmWave presence events.
+        // Events are skipped (but still drained) when mmWave reactions are disabled.
         #[cfg(feature = "mmwave")]
         while let Some(event) = mmwave.try_recv() {
-            info!("mmWave event: {:?}", event);
-            let detected = event == mmwave::PresenceEvent::Detected;
-            apply_presence_event(&mut led, event)?;
-            mqtt.publish_state(&led.state)?;
-            mqtt.publish_presence(detected)?;
+            if mmwave_enabled {
+                info!("mmWave event: {:?}", event);
+                let detected = event == mmwave::PresenceEvent::Detected;
+                apply_presence_event(&mut led, event)?;
+                mqtt.publish_state(&led.state)?;
+                mqtt.publish_presence(detected)?;
+            } else {
+                info!("mmWave event ignored (mmWave disabled): {:?}", event);
+            }
         }
 
         // Advance the animation by one tick and push the frame to the ring.
-        led.tick()?;
+        //
+        // When animations are disabled the ring renders a static solid-colour
+        // frame without advancing the phase counter; the stored animation
+        // selection is preserved so it resumes correctly when re-enabled.
+        if animations_enabled {
+            led.tick()?;
+        } else {
+            let saved = led.state.animation;
+            led.state.animation = AnimationType::Solid;
+            led.refresh()?;
+            led.state.animation = saved;
+        }
 
         std::thread::sleep(Duration::from_millis(50));
     }

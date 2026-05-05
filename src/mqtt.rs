@@ -12,6 +12,7 @@
 /// - Calling [`MqttHandle::on_connected`] once after the initial connection to
 ///   subscribe and publish the HA discovery message.
 /// - Polling [`MqttHandle::try_recv_command`] for incoming commands.
+/// - Polling [`MqttHandle::try_recv_switch`] for incoming switch commands.
 /// - Calling [`publish_state`] after applying a command.
 
 use std::sync::{
@@ -44,6 +45,19 @@ pub struct LightCommand {
     pub effect: Option<String>,
 }
 
+/// Incoming runtime switch command.
+///
+/// Delivered by [`MqttHandle::try_recv_switch`]; separate from [`LightCommand`]
+/// so the main loop can handle both without routing overhead.
+#[derive(Debug)]
+pub enum SwitchCommand {
+    /// Set the animation-enabled state (`true` = animations running).
+    Animations(bool),
+    /// Set the mmWave-enabled state (`true` = presence events applied to LEDs).
+    #[cfg(feature = "mmwave")]
+    Mmwave(bool),
+}
+
 /// Outgoing state published back to HomeAssistant.
 #[derive(Serialize, Debug)]
 struct LightStatePayload<'a> {
@@ -69,6 +83,7 @@ pub struct RgbColor {
 pub struct MqttHandle {
     client: EspMqttClient<'static>,
     commands: std::sync::mpsc::Receiver<LightCommand>,
+    switches: std::sync::mpsc::Receiver<SwitchCommand>,
     /// Set to `true` by the background thread each time MQTT (re)connects.
     pub reconnected: Arc<AtomicBool>,
 }
@@ -82,10 +97,22 @@ impl MqttHandle {
             .subscribe(config::COMMAND_TOPIC, QoS::AtLeastOnce)
             .context("MQTT subscribe failed")?;
 
+        self.client
+            .subscribe(config::ANIMATIONS_COMMAND_TOPIC, QoS::AtLeastOnce)
+            .context("MQTT subscribe (animations switch) failed")?;
+
+        #[cfg(feature = "mmwave")]
+        self.client
+            .subscribe(config::MMWAVE_ENABLE_COMMAND_TOPIC, QoS::AtLeastOnce)
+            .context("MQTT subscribe (mmwave enable switch) failed")?;
+
         publish_discovery(&mut self.client)?;
+        publish_animations_switch_discovery(&mut self.client)?;
 
         #[cfg(feature = "mmwave")]
         publish_presence_discovery(&mut self.client)?;
+        #[cfg(feature = "mmwave")]
+        publish_mmwave_enable_switch_discovery(&mut self.client)?;
 
         self.client
             .publish(
@@ -118,9 +145,41 @@ impl MqttHandle {
         self.commands.try_recv().ok()
     }
 
+    /// Non-blocking receive of the next runtime switch command, if any.
+    pub fn try_recv_switch(&self) -> Option<SwitchCommand> {
+        self.switches.try_recv().ok()
+    }
+
     /// Publish the current light state so HomeAssistant can track it.
     pub fn publish_state(&mut self, state: &LightState) -> Result<()> {
         publish_state(&mut self.client, state)
+    }
+
+    /// Publish the current animations-enabled state to HomeAssistant.
+    pub fn publish_animations_state(&mut self, enabled: bool) -> Result<()> {
+        self.client
+            .publish(
+                config::ANIMATIONS_STATE_TOPIC,
+                QoS::AtLeastOnce,
+                true, // retain so HA restores the switch state after a restart
+                if enabled { b"ON" } else { b"OFF" },
+            )
+            .context("failed to publish animations switch state")
+            .map(|_| ())
+    }
+
+    /// Publish the current mmWave-enabled state to HomeAssistant.
+    #[cfg(feature = "mmwave")]
+    pub fn publish_mmwave_enable_state(&mut self, enabled: bool) -> Result<()> {
+        self.client
+            .publish(
+                config::MMWAVE_ENABLE_STATE_TOPIC,
+                QoS::AtLeastOnce,
+                true, // retain
+                if enabled { b"ON" } else { b"OFF" },
+            )
+            .context("failed to publish mmwave-enable switch state")
+            .map(|_| ())
     }
 }
 
@@ -133,6 +192,7 @@ impl MqttHandle {
 /// when the connection is ready.
 pub fn start() -> Result<MqttHandle> {
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<LightCommand>();
+    let (sw_tx, sw_rx) = std::sync::mpsc::channel::<SwitchCommand>();
     let reconnected = Arc::new(AtomicBool::new(false));
     let reconnected_thread = Arc::clone(&reconnected);
 
@@ -172,11 +232,12 @@ pub fn start() -> Result<MqttHandle> {
     let (client, connection) = EspMqttClient::new(config::MQTT_URL, conf)
         .context("failed to create MQTT client")?;
 
-    spawn_event_loop(connection, cmd_tx, reconnected_thread);
+    spawn_event_loop(connection, cmd_tx, sw_tx, reconnected_thread);
 
     Ok(MqttHandle {
         client,
         commands: cmd_rx,
+        switches: sw_rx,
         reconnected,
     })
 }
@@ -190,6 +251,7 @@ pub fn start() -> Result<MqttHandle> {
 fn spawn_event_loop(
     mut connection: EspMqttConnection,
     cmd_tx: std::sync::mpsc::Sender<LightCommand>,
+    sw_tx: std::sync::mpsc::Sender<SwitchCommand>,
     reconnected: Arc<AtomicBool>,
 ) {
     std::thread::Builder::new()
@@ -219,13 +281,20 @@ fn spawn_event_loop(
                             topic: Some(topic),
                             data,
                             ..
-                        } if topic == config::COMMAND_TOPIC => {
-                            match serde_json::from_slice::<LightCommand>(data) {
-                                Ok(cmd) => {
-                                    cmd_tx.send(cmd).ok();
+                        } => {
+                            if topic == config::COMMAND_TOPIC {
+                                match serde_json::from_slice::<LightCommand>(data) {
+                                    Ok(cmd) => { cmd_tx.send(cmd).ok(); }
+                                    Err(e) => { warn!("MQTT: invalid light command — {e}"); }
                                 }
-                                Err(e) => {
-                                    warn!("MQTT: invalid command payload — {e}");
+                            } else if topic == config::ANIMATIONS_COMMAND_TOPIC {
+                                let enabled = data.eq_ignore_ascii_case(b"on");
+                                sw_tx.send(SwitchCommand::Animations(enabled)).ok();
+                            } else {
+                                #[cfg(feature = "mmwave")]
+                                if topic == config::MMWAVE_ENABLE_COMMAND_TOPIC {
+                                    let enabled = data.eq_ignore_ascii_case(b"on");
+                                    sw_tx.send(SwitchCommand::Mmwave(enabled)).ok();
                                 }
                             }
                         }
@@ -367,4 +436,85 @@ fn publish_presence_discovery(client: &mut EspMqttClient<'static>) -> Result<()>
             payload.as_bytes(),
         )
         .context("failed to publish presence discovery")
+}
+
+/// Publish a HomeAssistant MQTT discovery message for the animations `switch` entity.
+fn publish_animations_switch_discovery(client: &mut EspMqttClient<'static>) -> Result<()> {
+    let payload = format!(
+        r#"{{
+  "name": "Leapyboi Animations",
+  "unique_id": "leapyboi_animations_switch",
+  "state_topic": "{state}",
+  "command_topic": "{cmd}",
+  "payload_on": "ON",
+  "payload_off": "OFF",
+  "availability_topic": "{avail}",
+  "payload_available": "online",
+  "payload_not_available": "offline",
+  "device": {{
+    "identifiers": ["{dev_uid}"],
+    "name": "{dev_name}",
+    "model": "{model}",
+    "manufacturer": "{mfr}"
+  }}
+}}"#,
+        state    = config::ANIMATIONS_STATE_TOPIC,
+        cmd      = config::ANIMATIONS_COMMAND_TOPIC,
+        avail    = config::AVAILABILITY_TOPIC,
+        dev_uid  = config::DEVICE_UNIQUE_ID,
+        dev_name = config::DEVICE_NAME,
+        model    = config::DEVICE_MODEL,
+        mfr      = config::DEVICE_MANUFACTURER,
+    );
+
+    client
+        .publish(
+            config::ANIMATIONS_DISCOVERY_TOPIC,
+            QoS::AtLeastOnce,
+            true, // retain
+            payload.as_bytes(),
+        )
+        .context("failed to publish animations switch discovery")
+        .map(|_| ())
+}
+
+/// Publish a HomeAssistant MQTT discovery message for the mmWave-enable `switch` entity.
+#[cfg(feature = "mmwave")]
+fn publish_mmwave_enable_switch_discovery(client: &mut EspMqttClient<'static>) -> Result<()> {
+    let payload = format!(
+        r#"{{
+  "name": "Leapyboi mmWave",
+  "unique_id": "leapyboi_mmwave_enable_switch",
+  "state_topic": "{state}",
+  "command_topic": "{cmd}",
+  "payload_on": "ON",
+  "payload_off": "OFF",
+  "availability_topic": "{avail}",
+  "payload_available": "online",
+  "payload_not_available": "offline",
+  "device": {{
+    "identifiers": ["{dev_uid}"],
+    "name": "{dev_name}",
+    "model": "{model}",
+    "manufacturer": "{mfr}"
+  }}
+}}"#,
+        state    = config::MMWAVE_ENABLE_STATE_TOPIC,
+        cmd      = config::MMWAVE_ENABLE_COMMAND_TOPIC,
+        avail    = config::AVAILABILITY_TOPIC,
+        dev_uid  = config::DEVICE_UNIQUE_ID,
+        dev_name = config::DEVICE_NAME,
+        model    = config::DEVICE_MODEL,
+        mfr      = config::DEVICE_MANUFACTURER,
+    );
+
+    client
+        .publish(
+            config::MMWAVE_ENABLE_DISCOVERY_TOPIC,
+            QoS::AtLeastOnce,
+            true, // retain
+            payload.as_bytes(),
+        )
+        .context("failed to publish mmwave-enable switch discovery")
+        .map(|_| ())
 }

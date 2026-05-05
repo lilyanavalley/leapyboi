@@ -138,6 +138,21 @@ All timing constants live in `src/config.rs` — no other file needs changing:
 
 One tick ≈ 50 ms (the main-loop period).
 
+### Disabling animations at runtime
+
+A **Leapyboi Animations** toggle switch appears in HomeAssistant alongside the
+light card.  Turning it **off** freezes the ring on a static solid colour
+(preserving the current brightness and RGB values) without losing the selected
+effect — re-enable the switch and the animation resumes from where it left off.
+
+You can also toggle directly over MQTT:
+
+```
+Topic:   leapyboi/animations/set
+Payload: OFF          # pause animations
+Payload: ON           # resume animations
+```
+
 ---
 
 ## Custom animation via `animation.png`
@@ -200,6 +215,19 @@ A `binary_sensor` **Leapyboi Presence** entity also appears in HomeAssistant
 via MQTT discovery.  HomeAssistant light commands continue to work normally —
 the presence sensor is an additional input, and each presence change is
 reflected back to HA.
+
+A separate **Leapyboi mmWave** toggle switch also appears in HA.  Turning it
+**off** makes the firmware ignore all presence events (the ring stays at
+whatever state HA last commanded) without restarting or reflashing.  Re-enable
+it at any time and presence reactions resume immediately.
+
+You can also toggle it directly over MQTT:
+
+```
+Topic:   leapyboi/mmwave/enable/set
+Payload: OFF    # ignore presence events
+Payload: ON     # resume presence reactions
+```
 
 ### Wiring
 
@@ -318,7 +346,9 @@ leapyboi/
 | Device name shown in HA | `src/config.rs` → `DEVICE_NAME` |
 | Animation speeds | `src/config.rs` → `ANIM_RAINBOW_SPEED`, `ANIM_BREATHE_SPEED`, … |
 | Custom animation frames | Place `animation.png` in project root (width=`LED_COUNT`, height=frames) |
+| Toggle animations at runtime | HA **Leapyboi Animations** switch, or `leapyboi/animations/set` (`ON`/`OFF`) |
 | ESP-IDF version | `.cargo/config.toml` → `ESP_IDF_VERSION` |
 | mmWave UART pins | `src/main.rs` → `peripherals.pins.gpio4 / gpio5` |
 | mmWave LED colours | `src/config.rs` → `PRESENCE_COLOR`, `NO_PRESENCE_COLOR`, … |
 | mmWave LED animations | `src/config.rs` → `PRESENCE_ANIMATION`, `NO_PRESENCE_ANIMATION` |
+| Toggle mmWave at runtime | HA **Leapyboi mmWave** switch, or `leapyboi/mmwave/enable/set` (`ON`/`OFF`) |
