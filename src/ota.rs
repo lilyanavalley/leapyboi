@@ -75,7 +75,7 @@ pub fn apply_update(firmware_url: &str) -> Result<bool> {
 
     let mut ota = EspOta::new().map_err(|e| anyhow!("EspOta::new failed: {e:?}"))?;
     let mut update = ota
-        .begin()
+        .initiate_update()
         .map_err(|e| anyhow!("EspOta::begin failed: {e:?}"))?;
 
     let result = stream_firmware(firmware_url, &mut update);
