@@ -39,6 +39,12 @@ struct AppConfig {
 
     #[serde(default = "default_led_data_pin_num")]
     led_data_pin_num: i32,
+
+    #[serde(default)]
+    ota_firmware_url: String,
+
+    #[serde(default)]
+    ota_version_url: String,
 }
 
 fn default_mqtt_url() -> String {
@@ -75,6 +81,8 @@ fn main() {
         emit_env("MQTT_USERNAME", &app.mqtt_username);
         emit_env("MQTT_PASSWORD", &app.mqtt_password);
         emit_env("LED_DATA_PIN_NUM", &app.led_data_pin_num.to_string());
+        emit_env("OTA_FIRMWARE_URL", &app.ota_firmware_url);
+        emit_env("OTA_VERSION_URL", &app.ota_version_url);
     } else {
         // No cfg.toml yet — emit empty/default placeholders so that the build
         // succeeds with a clear warning.  The firmware will not connect until
@@ -86,6 +94,8 @@ fn main() {
         emit_env("MQTT_USERNAME", "");
         emit_env("MQTT_PASSWORD", "");
         emit_env("LED_DATA_PIN_NUM", "2");
+        emit_env("OTA_FIRMWARE_URL", "");
+        emit_env("OTA_VERSION_URL", "");
 
         println!(
               "cargo:warning=cfg.toml not found — \

@@ -31,3 +31,16 @@ mqtt_password = "YOUR_MQTT_PASSWORD"
 # GPIO number wired to the WS2812B DIN data line.
 # XIAO ESP32-C6 default: GPIO2 (D0).
 led_data_pin_num = 2
+
+# ── OTA (over-the-air) updates ────────────────────────────────────────────────
+
+# Direct download URL for the firmware binary published in GitHub Releases.
+# Replace YOUR_USERNAME / YOUR_REPO_NAME with your actual GitHub username and
+# repository name.  The workflow in .github/workflows/release.yml publishes the
+# file as "leapyboi.bin" on every versioned tag (e.g. v1.2.3).
+ota_firmware_url = "https://github.com/YOUR_USERNAME/YOUR_REPO_NAME/releases/latest/download/leapyboi.bin"
+
+# URL of the plain-text version file published alongside the firmware.
+# The file contains only the version string (e.g. "1.2.3") so the device can
+# decide whether a download is necessary without fetching the full binary.
+ota_version_url = "https://github.com/YOUR_USERNAME/YOUR_REPO_NAME/releases/latest/download/version.txt"

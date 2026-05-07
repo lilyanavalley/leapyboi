@@ -114,3 +114,28 @@ pub const NO_PRESENCE_COLOR: (u8, u8, u8) = (255, 255, 0);
 /// LED brightness applied when no presence is detected.
 #[cfg(feature = "mmwave")]
 pub const NO_PRESENCE_BRIGHTNESS: u8 = 50;
+
+// ── OTA (over-the-air) update configuration ───────────────────────────────────
+
+/// URL of the firmware binary to download during an OTA update.
+///
+/// Populated from `cfg.toml → ota_firmware_url` at compile time.
+/// Example: `"https://github.com/you/leapyboi/releases/latest/download/leapyboi.bin"`
+pub const OTA_FIRMWARE_URL: &str = env!("OTA_FIRMWARE_URL");
+
+/// URL of the plain-text version file used to check whether a newer firmware is
+/// available without downloading the full binary.
+///
+/// Populated from `cfg.toml → ota_version_url` at compile time.
+/// Example: `"https://github.com/you/leapyboi/releases/latest/download/version.txt"`
+pub const OTA_VERSION_URL: &str = env!("OTA_VERSION_URL");
+
+/// MQTT topic the device subscribes to for on-demand OTA update requests.
+///
+/// Publish any payload to this topic to trigger an immediate OTA check.
+pub const OTA_UPDATE_TOPIC: &str = "leapyboi/ota/update";
+
+/// MQTT topic where the device reports OTA status strings.
+///
+/// Published values: `"checking"`, `"up_to_date"`, `"updating"`, `"error: …"`
+pub const OTA_STATUS_TOPIC: &str = "leapyboi/ota/status";

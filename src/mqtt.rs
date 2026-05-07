@@ -67,6 +67,9 @@ pub struct MqttHandle {
     commands: std::sync::mpsc::Receiver<LightCommand>,
     /// Set to `true` by the background thread each time MQTT (re)connects.
     pub reconnected: Arc<AtomicBool>,
+    /// Set to `true` by the background thread when an OTA update is requested
+    /// via the `leapyboi/ota/update` MQTT topic.
+    pub ota_requested: Arc<AtomicBool>,
 }
 
 impl MqttHandle {
@@ -77,6 +80,10 @@ impl MqttHandle {
         self.client
             .subscribe(config::COMMAND_TOPIC, QoS::AtLeastOnce)
             .context("MQTT subscribe failed")?;
+
+        self.client
+            .subscribe(config::OTA_UPDATE_TOPIC, QoS::AtLeastOnce)
+            .context("MQTT OTA subscribe failed")?;
 
         publish_discovery(&mut self.client)?;
 
@@ -135,6 +142,8 @@ pub fn start() -> Result<MqttHandle> {
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<LightCommand>();
     let reconnected = Arc::new(AtomicBool::new(false));
     let reconnected_thread = Arc::clone(&reconnected);
+    let ota_requested = Arc::new(AtomicBool::new(false));
+    let ota_requested_thread = Arc::clone(&ota_requested);
 
     let has_username = config::mqtt_username().is_some();
     let has_password = config::mqtt_password().is_some();
@@ -172,12 +181,13 @@ pub fn start() -> Result<MqttHandle> {
     let (client, connection) = EspMqttClient::new(config::MQTT_URL, conf)
         .context("failed to create MQTT client")?;
 
-    spawn_event_loop(connection, cmd_tx, reconnected_thread);
+    spawn_event_loop(connection, cmd_tx, reconnected_thread, ota_requested_thread);
 
     Ok(MqttHandle {
         client,
         commands: cmd_rx,
         reconnected,
+        ota_requested,
     })
 }
 
@@ -191,6 +201,7 @@ fn spawn_event_loop(
     mut connection: EspMqttConnection,
     cmd_tx: std::sync::mpsc::Sender<LightCommand>,
     reconnected: Arc<AtomicBool>,
+    ota_requested: Arc<AtomicBool>,
 ) {
     std::thread::Builder::new()
         .name("mqtt_event".into())
@@ -228,6 +239,13 @@ fn spawn_event_loop(
                                     warn!("MQTT: invalid command payload — {e}");
                                 }
                             }
+                        }
+                        EventPayload::Received {
+                            topic: Some(topic),
+                            ..
+                        } if topic == config::OTA_UPDATE_TOPIC => {
+                            info!("MQTT: OTA update requested");
+                            ota_requested.store(true, Ordering::Relaxed);
                         }
                         _ => {}
                     },
