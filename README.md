@@ -1,5 +1,20 @@
 # leapyboi
 
+[![Rust](https://img.shields.io/badge/Rust-%23000000.svg?e&logo=rust&logoColor=white)](#)
+[![GitHub Copilot](https://img.shields.io/badge/GitHub%20Copilot-000?logo=githubcopilot&logoColor=fff)](#)
+[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?logo=github-actions&logoColor=white)](#)
+
+Working model of an ARC Raiders 'Leaper' with features:
+- addressable LED ring of NeoPixels,
+- connects to MQTT & HomeAssistant,
+- (optional) mmWave Human presence detection
+
+I wanted to build a reactive Leaper model using [this 3D printable by 3DMN](https://makerworld.com/en/models/2314329-arc-raiders-leaper-articulated-rgb-led#profileId-2526937) (credit to the author for their awesome model!).
+This firmware uses an ESP32-C6 to connect to WiFi and communicates with HomeAssistant via MQTT to do cool things a Leaper would IRL... Including changing the color of the LED ring in response to a person entering/exiting the mmWave detection area.
+As a baseline, this firmware exposes a light entity to HomeAssistant for direct control of the LED ring and consequently any automation(s) you write for it.
+
+---
+
 ESP32-C6 firmware written in Rust that connects a **WS2812B Neopixel LED ring**
 to **HomeAssistant** via **MQTT over WiFi**.
 
