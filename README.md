@@ -3,6 +3,7 @@
 [![Rust](https://img.shields.io/badge/Rust-%23000000.svg?e&logo=rust&logoColor=white)](#)
 [![GitHub Copilot](https://img.shields.io/badge/GitHub%20Copilot-000?logo=githubcopilot&logoColor=fff)](#)
 [![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?logo=github-actions&logoColor=white)](#)
+[![GPL-3 Licensed][https://upload.wikimedia.org/wikipedia/commons/8/86/GPL_v3_Blue_Badge.svg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original)](#)
 
 Working model of an ARC Raiders 'Leaper' with features:
 - addressable LED ring of NeoPixels,
@@ -276,3 +277,10 @@ leapyboi/
 | ESP-IDF version | `.cargo/config.toml` → `ESP_IDF_VERSION` |
 | mmWave UART pins | `src/main.rs` → `peripherals.pins.gpio16 / gpio17` |
 | mmWave LED colours | `src/config.rs` → `PRESENCE_COLOR`, `NO_PRESENCE_COLOR`, … |
+
+
+## License
+
+This software is licensed under the GNU General Public License, version 3.
+
+[![GNU GPL-3 License Logo](https://upload.wikimedia.org/wikipedia/commons/9/93/GPLv3_Logo.svg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original)](#)
