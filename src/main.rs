@@ -137,6 +137,7 @@ fn read_transition_lockout_from_nvs() -> Result<Option<u32>> {
 
 #[cfg(feature = "mmwave")]
 fn write_transition_lockout_to_nvs(lockout_ms: u32) -> Result<()> {
+    let lockout_ms = normalize_transition_lockout_ms(lockout_ms);
     let namespace = CString::new(MMWAVE_SETTINGS_NVS_NAMESPACE)?;
     let key = CString::new(MMWAVE_TRANSITION_LOCKOUT_NVS_KEY)?;
 
@@ -319,13 +320,11 @@ fn main() -> Result<()> {
                     mmwave_settings.lockout_ms = normalize_transition_lockout_ms(lockout_ms);
                     if mmwave_settings.lockout_ms == 0 {
                         log_instant_mode_warning("MQTT");
-                    } else if mmwave_settings.lockout_ms
-                        < config::MMWAVE_TRANSITION_LOCKOUT_DEFAULT_MS
+                    } else if mmwave_settings.lockout_ms < 100
                     {
                         warn!(
-                            "mmWave transition lockout reduced to {} ms (default {} ms).",
-                            mmwave_settings.lockout_ms,
-                            config::MMWAVE_TRANSITION_LOCKOUT_DEFAULT_MS
+                            "mmWave transition lockout set to very low value: {} ms.",
+                            mmwave_settings.lockout_ms
                         );
                     }
 
@@ -404,7 +403,7 @@ where
 fn apply_presence_event<D>(
     led: &mut LedController<D>,
     event: mmwave::PresenceEvent,
-    instant: bool,
+    immediate: bool,
 ) -> Result<()>
 where
     D: SmartLedsWrite<Color = RGB8>,
@@ -434,7 +433,7 @@ where
         }
     };
 
-    if instant {
+    if immediate {
         led.apply_state(target)
     } else {
         led.transition_to_state(

@@ -161,11 +161,6 @@ where
 ///
 /// `ratio` is the current step index and `total` is the number of steps.
 fn lerp_u8(start: u8, end: u8, ratio: u16, total: u16) -> u8 {
-    // Defensive fallback for accidental external callers with invalid total.
-    if total == 0 {
-        return end;
-    }
-
     let start = i32::from(start);
     let end = i32::from(end);
     let delta = end - start;
