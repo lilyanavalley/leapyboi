@@ -17,7 +17,7 @@ use crate::config::LED_COUNT;
 ///
 /// This mirrors the HomeAssistant `light` entity state.  Mutate the fields
 /// you need, then call [`LedController::refresh`] to apply the change.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LightState {
     /// Whether the ring is on.
     pub on: bool,
@@ -106,9 +106,7 @@ where
         steps: u8,
         step_delay: Duration,
     ) -> Result<()> {
-        if steps == 0 || self.state.on == target.on && self.state.brightness == target.brightness
-            && self.state.r == target.r && self.state.g == target.g && self.state.b == target.b
-        {
+        if steps == 0 || self.state == target {
             return self.apply_state(target);
         }
 
@@ -118,6 +116,7 @@ where
         for step in 1..=steps {
             let ratio = u16::from(step);
             let mut frame = LightState {
+                // Keep output lit while interpolating to avoid abrupt off-frames mid-fade.
                 on: start.on || target.on,
                 brightness: lerp_u8(start.brightness, target.brightness, ratio, total),
                 r: lerp_u8(start.r, target.r, ratio, total),

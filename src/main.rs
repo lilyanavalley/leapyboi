@@ -345,7 +345,7 @@ fn main() -> Result<()> {
         #[cfg(feature = "mmwave")]
         if let Some(event) = pending_presence_event {
             let can_apply = mmwave_settings.lockout_ms == 0
-                || last_presence_apply.is_none_or(|last| {
+                || last_presence_apply.map_or(true, |last| {
                     last.elapsed() >= Duration::from_millis(mmwave_settings.lockout_ms as u64)
                 });
 
