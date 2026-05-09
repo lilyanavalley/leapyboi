@@ -156,6 +156,9 @@ where
     }
 }
 
+/// Linearly interpolate from `start` to `end` at `ratio / total`.
+///
+/// `ratio` is the current step index and `total` is the number of steps.
 fn lerp_u8(start: u8, end: u8, ratio: u16, total: u16) -> u8 {
     if total == 0 {
         return end;

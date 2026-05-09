@@ -73,7 +73,9 @@ const MMWAVE_TRANSITION_LOCKOUT_NVS_KEY: &str = "mw_lockout";
 
 #[cfg(feature = "mmwave")]
 #[derive(Debug, Clone, Copy)]
+/// Runtime mmWave transition-safety settings.
 struct MmwaveTransitionSettings {
+    /// Minimum milliseconds between applied presence-driven light transitions.
     lockout_ms: u32,
 }
 
@@ -87,6 +89,7 @@ impl Default for MmwaveTransitionSettings {
 }
 
 #[cfg(feature = "mmwave")]
+/// Clamp runtime lockout values to match the exposed HA/MQTT control range.
 fn normalize_transition_lockout_ms(lockout_ms: u32) -> u32 {
     lockout_ms.min(10_000)
 }
