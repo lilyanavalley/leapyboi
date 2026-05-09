@@ -27,6 +27,8 @@ use esp_idf_svc::mqtt::client::{
 };
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "mmwave")]
+use serde_json::Value;
 
 use crate::config;
 use crate::led::LightState;
@@ -39,6 +41,13 @@ pub struct LightCommand {
     pub state: Option<String>,
     pub brightness: Option<u8>,
     pub color: Option<RgbColor>,
+}
+
+#[derive(Debug)]
+pub enum IncomingCommand {
+    Light(LightCommand),
+    #[cfg(feature = "mmwave")]
+    MmwaveTransitionLockoutMs(u32),
 }
 
 /// Outgoing state published back to HomeAssistant.
@@ -64,7 +73,7 @@ pub struct RgbColor {
 /// Dropping this value closes the MQTT connection.
 pub struct MqttHandle {
     client: EspMqttClient<'static>,
-    commands: std::sync::mpsc::Receiver<LightCommand>,
+    commands: std::sync::mpsc::Receiver<IncomingCommand>,
     /// Set to `true` by the background thread each time MQTT (re)connects.
     pub reconnected: Arc<AtomicBool>,
     /// Set to `true` by the background thread when an OTA update is requested
@@ -85,11 +94,17 @@ impl MqttHandle {
             .subscribe(config::OTA_UPDATE_TOPIC, QoS::AtLeastOnce)
             .context("MQTT OTA subscribe failed")?;
 
+        #[cfg(feature = "mmwave")]
+        self.client
+            .subscribe(config::MMWAVE_TRANSITION_LOCKOUT_SET_TOPIC, QoS::AtLeastOnce)
+            .context("MQTT mmWave transition lockout subscribe failed")?;
+
         publish_discovery(&mut self.client)?;
 
         #[cfg(feature = "mmwave")]
         {
             publish_presence_discovery(&mut self.client)?;
+            publish_transition_lockout_discovery(&mut self.client)?;
             // Ensure HA has a defined initial state before the first sensor frame.
             self.publish_presence(false)?;
         }
@@ -120,8 +135,21 @@ impl MqttHandle {
             .context("failed to publish presence state")
     }
 
-    /// Non-blocking receive of the next light command, if any.
-    pub fn try_recv_command(&self) -> Option<LightCommand> {
+    /// Publish the configured mmWave transition lockout (milliseconds).
+    #[cfg(feature = "mmwave")]
+    pub fn publish_mmwave_transition_lockout(&mut self, lockout_ms: u32) -> Result<u32> {
+        self.client
+            .publish(
+                config::MMWAVE_TRANSITION_LOCKOUT_STATE_TOPIC,
+                QoS::AtLeastOnce,
+                true, // retain
+                lockout_ms.to_string().as_bytes(),
+            )
+            .context("failed to publish mmWave transition lockout state")
+    }
+
+    /// Non-blocking receive of the next incoming command, if any.
+    pub fn try_recv_command(&self) -> Option<IncomingCommand> {
         self.commands.try_recv().ok()
     }
 
@@ -139,7 +167,7 @@ impl MqttHandle {
 /// asynchronously by ESP-IDF.  Poll [`MqttHandle::reconnected`] to detect
 /// when the connection is ready.
 pub fn start() -> Result<MqttHandle> {
-    let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<LightCommand>();
+    let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<IncomingCommand>();
     let reconnected = Arc::new(AtomicBool::new(false));
     let reconnected_thread = Arc::clone(&reconnected);
     let ota_requested = Arc::new(AtomicBool::new(false));
@@ -199,7 +227,7 @@ pub fn start() -> Result<MqttHandle> {
 /// continuously; without this the internal state machine stalls.
 fn spawn_event_loop(
     mut connection: EspMqttConnection,
-    cmd_tx: std::sync::mpsc::Sender<LightCommand>,
+    cmd_tx: std::sync::mpsc::Sender<IncomingCommand>,
     reconnected: Arc<AtomicBool>,
     ota_requested: Arc<AtomicBool>,
 ) {
@@ -233,7 +261,7 @@ fn spawn_event_loop(
                         } if topic == config::COMMAND_TOPIC => {
                             match serde_json::from_slice::<LightCommand>(data) {
                                 Ok(cmd) => {
-                                    cmd_tx.send(cmd).ok();
+                                    cmd_tx.send(IncomingCommand::Light(cmd)).ok();
                                 }
                                 Err(e) => {
                                     warn!("MQTT: invalid command payload — {e}");
@@ -246,6 +274,24 @@ fn spawn_event_loop(
                         } if topic == config::OTA_UPDATE_TOPIC => {
                             info!("MQTT: OTA update requested");
                             ota_requested.store(true, Ordering::Relaxed);
+                        }
+                        #[cfg(feature = "mmwave")]
+                        EventPayload::Received {
+                            topic: Some(topic),
+                            data,
+                            ..
+                        } if topic == config::MMWAVE_TRANSITION_LOCKOUT_SET_TOPIC => {
+                            match parse_lockout_ms_payload(data) {
+                                Some(ms) => {
+                                    cmd_tx
+                                        .send(IncomingCommand::MmwaveTransitionLockoutMs(ms))
+                                        .ok();
+                                }
+                                None => warn!(
+                                    "MQTT: invalid mmWave transition lockout payload on {}",
+                                    config::MMWAVE_TRANSITION_LOCKOUT_SET_TOPIC
+                                ),
+                            }
                         }
                         _ => {}
                     },
@@ -372,4 +418,69 @@ fn publish_presence_discovery(client: &mut EspMqttClient<'static>) -> Result<u32
             payload.as_bytes(),
         )
         .context("failed to publish presence discovery")
+}
+
+/// Publish HomeAssistant discovery for runtime mmWave transition lockout control.
+#[cfg(feature = "mmwave")]
+fn publish_transition_lockout_discovery(client: &mut EspMqttClient<'static>) -> Result<u32> {
+    let payload = format!(
+        r#"{{
+  "name": "Leapyboi mmWave transition lockout",
+  "unique_id": "{uid}",
+  "state_topic": "{state}",
+  "command_topic": "{cmd}",
+  "unit_of_measurement": "ms",
+  "mode": "box",
+  "min": 0,
+  "max": 10000,
+  "step": 100,
+  "icon": "mdi:timer-cog",
+  "availability_topic": "{avail}",
+  "payload_available": "online",
+  "payload_not_available": "offline",
+  "device": {{
+    "identifiers": ["{dev_uid}"],
+    "name": "{dev_name}",
+    "model": "{model}",
+    "manufacturer": "{mfr}"
+  }}
+}}"#,
+        uid = "leapyboi_mmwave_transition_lockout_ms",
+        state = config::MMWAVE_TRANSITION_LOCKOUT_STATE_TOPIC,
+        cmd = config::MMWAVE_TRANSITION_LOCKOUT_SET_TOPIC,
+        avail = config::AVAILABILITY_TOPIC,
+        dev_uid = config::DEVICE_UNIQUE_ID,
+        dev_name = config::DEVICE_NAME,
+        model = config::DEVICE_MODEL,
+        mfr = config::DEVICE_MANUFACTURER,
+    );
+
+    client
+        .publish(
+            config::MMWAVE_TRANSITION_LOCKOUT_DISCOVERY_TOPIC,
+            QoS::AtLeastOnce,
+            true, // retain
+            payload.as_bytes(),
+        )
+        .context("failed to publish mmWave transition lockout discovery")
+}
+
+#[cfg(feature = "mmwave")]
+fn parse_lockout_ms_payload(data: &[u8]) -> Option<u32> {
+    let text = std::str::from_utf8(data).ok()?.trim();
+    if let Ok(ms) = text.parse::<u32>() {
+        return Some(ms);
+    }
+
+    let value: Value = serde_json::from_slice(data).ok()?;
+    if let Some(ms) = value.as_u64() {
+        return u32::try_from(ms).ok();
+    }
+    if let Some(ms) = value.get("lockout_ms").and_then(|v| v.as_u64()) {
+        return u32::try_from(ms).ok();
+    }
+    value
+        .get("value")
+        .and_then(|v| v.as_u64())
+        .and_then(|ms| u32::try_from(ms).ok())
 }

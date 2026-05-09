@@ -133,6 +133,12 @@ The [Seeed XIAO 24 GHz mmWave Human Static Presence Sensor](https://www.seeedstu
 | Person **detected** | Turns **on** with warm-white (configurable in `src/config.rs`) |
 | **No** person detected | Switches to a dim blue tint (or turns off if `NO_PRESENCE_COLOR = (0,0,0)`) |
 
+To reduce rapid flashing between occupancy changes, mmWave light transitions now use
+two safety mechanisms by default:
+
+- **Transition lockout:** `2000 ms` between applied presence-driven light changes
+- **Smooth transition:** short interpolated fade instead of instant jump
+
 A `binary_sensor` **Leapyboi Presence** entity also appears in HomeAssistant
 via MQTT discovery.  HomeAssistant light commands continue to work normally —
 the presence sensor is an additional input, and each presence change is
@@ -200,10 +206,27 @@ and preamble hit counters) without changing production defaults.
 | `PRESENCE_BRIGHTNESS` | `200` | Brightness (0-255) when present |
 | `NO_PRESENCE_COLOR` | `(0, 0, 30)` | LED colour when no one is detected |
 | `NO_PRESENCE_BRIGHTNESS` | `50` | Brightness when no one is detected |
+| `MMWAVE_TRANSITION_LOCKOUT_DEFAULT_MS` | `2000` | Default minimum time between mmWave-driven light transitions |
+| `MMWAVE_TRANSITION_STEPS` | `12` | Number of steps in each mmWave transition |
+| `MMWAVE_TRANSITION_STEP_DELAY_MS` | `60` | Delay between mmWave transition steps |
 
 Set `NO_PRESENCE_COLOR = (0, 0, 0)` to turn the ring **off** when the room is empty.
 
 All constants live in `src/config.rs` under the `mmwave` feature gate.
+
+### Runtime transition safety control (MQTT)
+
+You can change the mmWave transition lockout on-the-fly over MQTT:
+
+- Set topic: `leapyboi/mmwave/transition_lockout_ms/set`
+- State topic: `leapyboi/mmwave/transition_lockout_ms/state`
+- Units: milliseconds
+
+This value is persisted in ESP NVS and restored after reboot.
+
+Setting the lockout to `0` enables **instant mode** (no lockout + no fade).
+⚠️ **Health warning:** instant mode can cause rapid light transitions within seconds,
+which may trigger photosensitive responses (including seizure risk). Use with care.
 ## Debug logging
 
 On startup, the firmware logs which MQTT authentication mode is active.
