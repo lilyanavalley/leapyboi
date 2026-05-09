@@ -90,8 +90,19 @@ impl Default for MmwaveTransitionSettings {
 
 #[cfg(feature = "mmwave")]
 /// Clamp runtime lockout values to match the exposed HA/MQTT control range.
+///
+/// HomeAssistant discovery advertises a maximum of `10000` ms, so values above
+/// that are reduced to keep runtime behavior consistent with UI limits.
 fn normalize_transition_lockout_ms(lockout_ms: u32) -> u32 {
     lockout_ms.min(10_000)
+}
+
+#[cfg(feature = "mmwave")]
+fn log_instant_mode_warning(source: &str) {
+    warn!(
+        "mmWave instant transition mode enabled via {source}. {}",
+        config::MMWAVE_INSTANT_MODE_WARNING
+    );
 }
 
 #[cfg(feature = "mmwave")]
@@ -260,10 +271,7 @@ fn main() -> Result<()> {
         };
 
         if lockout_ms == 0 {
-            warn!(
-                "mmWave instant transition mode is active from stored settings. {}",
-                config::MMWAVE_INSTANT_MODE_WARNING
-            );
+            log_instant_mode_warning("stored settings");
         }
 
         let settings = MmwaveTransitionSettings { lockout_ms };
@@ -310,10 +318,7 @@ fn main() -> Result<()> {
                 IncomingCommand::MmwaveTransitionLockoutMs(lockout_ms) => {
                     mmwave_settings.lockout_ms = normalize_transition_lockout_ms(lockout_ms);
                     if mmwave_settings.lockout_ms == 0 {
-                        warn!(
-                            "mmWave instant transition mode enabled via MQTT. {}",
-                            config::MMWAVE_INSTANT_MODE_WARNING
-                        );
+                        log_instant_mode_warning("MQTT");
                     } else if mmwave_settings.lockout_ms
                         < config::MMWAVE_TRANSITION_LOCKOUT_DEFAULT_MS
                     {

@@ -117,6 +117,7 @@ where
             let ratio = u16::from(step);
             let mut frame = LightState {
                 // Keep output lit while interpolating to avoid abrupt off-frames mid-fade.
+                // Off→off transitions are already short-circuited by the equality check above.
                 on: start.on || target.on,
                 brightness: lerp_u8(start.brightness, target.brightness, ratio, total),
                 r: lerp_u8(start.r, target.r, ratio, total),
@@ -160,6 +161,7 @@ where
 ///
 /// `ratio` is the current step index and `total` is the number of steps.
 fn lerp_u8(start: u8, end: u8, ratio: u16, total: u16) -> u8 {
+    // Defensive fallback for accidental external callers with invalid total.
     if total == 0 {
         return end;
     }
