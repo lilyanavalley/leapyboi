@@ -115,6 +115,11 @@ pub const MMWAVE_TRANSITION_LOCKOUT_SET_TOPIC: &str =
 #[cfg(feature = "mmwave")]
 pub const MMWAVE_TRANSITION_LOCKOUT_DEFAULT_MS: u32 = 2_000;
 
+/// Warning text logged whenever instant mode is enabled.
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_INSTANT_MODE_WARNING: &str =
+    "WARNING: rapid light transitions within seconds can trigger photosensitive health reactions, including seizure risk.";
+
 /// Number of interpolation steps used for mmWave light transitions.
 #[cfg(feature = "mmwave")]
 pub const MMWAVE_TRANSITION_STEPS: u8 = 12;

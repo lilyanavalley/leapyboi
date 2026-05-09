@@ -258,7 +258,8 @@ fn main() -> Result<()> {
 
         if lockout_ms == 0 {
             warn!(
-                "mmWave instant transition mode is active from stored settings. WARNING: rapid light transitions within seconds can trigger photosensitive health reactions, including seizure risk."
+                "mmWave instant transition mode is active from stored settings. {}",
+                config::MMWAVE_INSTANT_MODE_WARNING
             );
         }
 
@@ -307,7 +308,8 @@ fn main() -> Result<()> {
                     mmwave_settings.lockout_ms = normalize_transition_lockout_ms(lockout_ms);
                     if mmwave_settings.lockout_ms == 0 {
                         warn!(
-                            "mmWave instant transition mode enabled via MQTT. WARNING: rapid light transitions within seconds can trigger photosensitive health reactions, including seizure risk."
+                            "mmWave instant transition mode enabled via MQTT. {}",
+                            config::MMWAVE_INSTANT_MODE_WARNING
                         );
                     } else if mmwave_settings.lockout_ms
                         < config::MMWAVE_TRANSITION_LOCKOUT_DEFAULT_MS

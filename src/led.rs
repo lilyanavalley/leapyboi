@@ -162,9 +162,9 @@ fn lerp_u8(start: u8, end: u8, ratio: u16, total: u16) -> u8 {
         return end;
     }
 
-    let start = i16::from(start);
-    let end = i16::from(end);
+    let start = i32::from(start);
+    let end = i32::from(end);
     let delta = end - start;
-    let value = start + ((delta * ratio as i16) / total as i16);
+    let value = start + ((delta * i32::from(ratio)) / i32::from(total));
     value.clamp(0, 255) as u8
 }
