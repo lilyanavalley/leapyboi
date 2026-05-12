@@ -92,7 +92,6 @@ jobs:
 
       - name: Build firmware
         run: |
-          . "$HOME/export-esp.sh"
           cargo build --release
 
       # espflash converts the ELF produced by Cargo into a raw flashable image
