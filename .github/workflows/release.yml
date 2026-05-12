@@ -90,10 +90,13 @@ jobs:
           version: "1.95.0.0"
           ldproxy: true
 
+      - name: Install espflash
+        run: cargo install cargo-espflash --locked
+
+
       - name: Build firmware
         run: |
-          cargo build --release && \
-          . /home/runner/exports
+          cargo build --release
 
       # - name: Install espflash
       #   run: cargo install cargo-espflash --locked
@@ -102,7 +105,7 @@ jobs:
       # that esptool.py / the ESP bootloader can consume.
       - name: Save firmware binary
         run: |
-           espflash save-image \
+          cargo espflash save-image \
             --chip esp32c6 \
             --output leapyboi.bin \
             target/riscv32imac-esp-espidf/release/leapyboi \
