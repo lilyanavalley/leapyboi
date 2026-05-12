@@ -92,19 +92,20 @@ jobs:
 
       - name: Build firmware
         run: |
-          cargo build --release
+          cargo build --release && \
+          . /home/runner/exports
 
-      - name: Install espflash
-        run: cargo install cargo-espflash --locked
+      # - name: Install espflash
+      #   run: cargo install cargo-espflash --locked
 
       # espflash converts the ELF produced by Cargo into a raw flashable image
       # that esptool.py / the ESP bootloader can consume.
       - name: Save firmware binary
         run: |
-          cargo espflash save-image \
+           espflash save-image \
             --chip esp32c6 \
+            --output leapyboi.bin \
             target/riscv32imac-esp-espidf/release/leapyboi \
-            leapyboi.bin
 
       # The device fetches this file first to decide whether a full download is
       # needed.  Strip the leading 'v' so it matches CARGO_PKG_VERSION exactly.
