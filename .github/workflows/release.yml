@@ -87,7 +87,7 @@ jobs:
         uses: esp-rs/xtensa-toolchain@v1.5
         with:
           default: true
-          version: "1.7.0"
+          version: "1.95.0.0"
           ldproxy: true
 
       - name: Build firmware
