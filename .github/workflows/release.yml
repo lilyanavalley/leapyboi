@@ -94,11 +94,14 @@ jobs:
         run: |
           cargo build --release
 
+      - name: Install espflash
+        run: cargo install cargo-espflash --locked
+
       # espflash converts the ELF produced by Cargo into a raw flashable image
       # that esptool.py / the ESP bootloader can consume.
       - name: Save firmware binary
         run: |
-          espflash save-image \
+          cargo espflash save-image \
             --chip esp32c6 \
             target/riscv32imac-esp-espidf/release/leapyboi \
             leapyboi.bin
