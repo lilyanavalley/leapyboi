@@ -15,7 +15,7 @@
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
     hal::gpio::AnyOutputPin,
@@ -24,6 +24,8 @@ use esp_idf_svc::{
     nvs::EspDefaultNvsPartition,
 };
 use log::info;
+#[cfg(feature = "mmwave")]
+use log::warn;
 use smart_leds::{SmartLedsWrite, RGB8};
 use ws2812_esp32_rmt_driver::{driver::color::LedPixelColorGrb24, LedPixelEsp32Rmt};
 
@@ -37,7 +39,14 @@ mod wifi;
 mod mmwave;
 
 use led::LedController;
-use mqtt::LightCommand;
+use mqtt::{IncomingCommand, LightCommand};
+
+#[cfg(feature = "mmwave")]
+use esp_idf_svc::sys;
+#[cfg(feature = "mmwave")]
+use std::ffi::CString;
+#[cfg(feature = "mmwave")]
+use std::time::Instant;
 
 fn run_startup_led_self_test<D>(led: &mut LedController<D>) -> Result<()>
 where
@@ -54,6 +63,108 @@ where
 
     led.all_off()?;
     std::thread::sleep(Duration::from_millis(120));
+    Ok(())
+}
+
+#[cfg(feature = "mmwave")]
+const MMWAVE_SETTINGS_NVS_NAMESPACE: &str = "leapyboi";
+#[cfg(feature = "mmwave")]
+const MMWAVE_TRANSITION_LOCKOUT_NVS_KEY: &str = "mw_lockout";
+
+#[cfg(feature = "mmwave")]
+#[derive(Debug, Clone, Copy)]
+/// Runtime mmWave transition-safety settings.
+struct MmwaveTransitionSettings {
+    /// Minimum milliseconds between applied presence-driven light transitions.
+    lockout_ms: u32,
+}
+
+#[cfg(feature = "mmwave")]
+impl Default for MmwaveTransitionSettings {
+    fn default() -> Self {
+        Self {
+            lockout_ms: config::MMWAVE_TRANSITION_LOCKOUT_DEFAULT_MS,
+        }
+    }
+}
+
+#[cfg(feature = "mmwave")]
+/// Clamp runtime lockout values to match the exposed HA/MQTT control range.
+///
+/// HomeAssistant discovery advertises a maximum of `10000` ms, so values above
+/// that are reduced to keep runtime behavior consistent with UI limits.
+fn normalize_transition_lockout_ms(lockout_ms: u32) -> u32 {
+    lockout_ms.min(10_000)
+}
+
+#[cfg(feature = "mmwave")]
+fn log_instant_mode_warning(source: &str) {
+    warn!(
+        "mmWave instant transition mode enabled via {source}. {}",
+        config::MMWAVE_INSTANT_MODE_WARNING
+    );
+}
+
+#[cfg(feature = "mmwave")]
+fn read_transition_lockout_from_nvs() -> Result<Option<u32>> {
+    let namespace = CString::new(MMWAVE_SETTINGS_NVS_NAMESPACE)?;
+    let key = CString::new(MMWAVE_TRANSITION_LOCKOUT_NVS_KEY)?;
+
+    let mut handle: sys::nvs_handle_t = 0;
+    let open_err = unsafe {
+        sys::nvs_open(
+            namespace.as_ptr(),
+            sys::nvs_open_mode_t_NVS_READONLY,
+            &mut handle,
+        )
+    };
+    if open_err != sys::ESP_OK as _ {
+        return Err(anyhow!("nvs_open(readonly) failed: {}", open_err));
+    }
+
+    let mut value: u32 = 0;
+    let get_err = unsafe { sys::nvs_get_u32(handle, key.as_ptr(), &mut value) };
+    unsafe { sys::nvs_close(handle) };
+
+    if get_err == sys::ESP_OK as _ {
+        Ok(Some(value))
+    } else if get_err == sys::ESP_ERR_NVS_NOT_FOUND as _ {
+        Ok(None)
+    } else {
+        Err(anyhow!("nvs_get_u32 failed: {}", get_err))
+    }
+}
+
+#[cfg(feature = "mmwave")]
+fn write_transition_lockout_to_nvs(lockout_ms: u32) -> Result<()> {
+    let lockout_ms = normalize_transition_lockout_ms(lockout_ms);
+    let namespace = CString::new(MMWAVE_SETTINGS_NVS_NAMESPACE)?;
+    let key = CString::new(MMWAVE_TRANSITION_LOCKOUT_NVS_KEY)?;
+
+    let mut handle: sys::nvs_handle_t = 0;
+    let open_err = unsafe {
+        sys::nvs_open(
+            namespace.as_ptr(),
+            sys::nvs_open_mode_t_NVS_READWRITE,
+            &mut handle,
+        )
+    };
+    if open_err != sys::ESP_OK as _ {
+        return Err(anyhow!("nvs_open(readwrite) failed: {}", open_err));
+    }
+
+    let set_err = unsafe { sys::nvs_set_u32(handle, key.as_ptr(), lockout_ms) };
+    if set_err != sys::ESP_OK as _ {
+        unsafe { sys::nvs_close(handle) };
+        return Err(anyhow!("nvs_set_u32 failed: {}", set_err));
+    }
+
+    let commit_err = unsafe { sys::nvs_commit(handle) };
+    unsafe { sys::nvs_close(handle) };
+    if commit_err != sys::ESP_OK as _ {
+        return Err(anyhow!("nvs_commit failed: {}", commit_err));
+    }
+
     Ok(())
 }
 
@@ -145,6 +256,37 @@ fn main() -> Result<()> {
         )?
     };
 
+    #[cfg(feature = "mmwave")]
+    let mut mmwave_settings = {
+        let default_settings = MmwaveTransitionSettings::default();
+        let lockout_ms = match read_transition_lockout_from_nvs() {
+            Ok(Some(value)) => normalize_transition_lockout_ms(value),
+            Ok(None) => default_settings.lockout_ms,
+            Err(e) => {
+                warn!(
+                    "mmWave transition lockout load failed; using default {} ms: {e:#}",
+                    default_settings.lockout_ms
+                );
+                default_settings.lockout_ms
+            }
+        };
+
+        if lockout_ms == 0 {
+            log_instant_mode_warning("stored settings");
+        }
+
+        let settings = MmwaveTransitionSettings { lockout_ms };
+        if let Err(e) = mqtt.publish_mmwave_transition_lockout(settings.lockout_ms) {
+            warn!("failed to publish mmWave transition lockout state: {e:#}");
+        }
+        settings
+    };
+
+    #[cfg(feature = "mmwave")]
+    let mut last_presence_apply: Option<Instant> = None;
+    #[cfg(feature = "mmwave")]
+    let mut pending_presence_event: Option<mmwave::PresenceEvent> = None;
+
     info!("Ready — waiting for HomeAssistant commands on {}", config::COMMAND_TOPIC);
 
     // ── Main loop ─────────────────────────────────────────────────────────────
@@ -165,11 +307,37 @@ fn main() -> Result<()> {
             }
         }
 
-        // Drain all queued HA light commands.
+        // Drain all queued MQTT commands.
         while let Some(cmd) = mqtt.try_recv_command() {
             info!("Command received: {:?}", cmd);
-            apply_command(&mut led, &cmd)?;
-            mqtt.publish_state(&led.state)?;
+            match cmd {
+                IncomingCommand::Light(light_cmd) => {
+                    apply_command(&mut led, &light_cmd)?;
+                    mqtt.publish_state(&led.state)?;
+                }
+                #[cfg(feature = "mmwave")]
+                IncomingCommand::MmwaveTransitionLockoutMs(lockout_ms) => {
+                    mmwave_settings.lockout_ms = normalize_transition_lockout_ms(lockout_ms);
+                    if mmwave_settings.lockout_ms == 0 {
+                        log_instant_mode_warning("MQTT");
+                    } else if mmwave_settings.lockout_ms < 100
+                    {
+                        warn!(
+                            "mmWave transition lockout set to very low value: {} ms.",
+                            mmwave_settings.lockout_ms
+                        );
+                    }
+
+                    if let Err(e) = write_transition_lockout_to_nvs(mmwave_settings.lockout_ms) {
+                        warn!("failed to persist mmWave transition lockout: {e:#}");
+                    }
+                    if let Err(e) =
+                        mqtt.publish_mmwave_transition_lockout(mmwave_settings.lockout_ms)
+                    {
+                        warn!("failed to publish mmWave transition lockout state: {e:#}");
+                    }
+                }
+            }
         }
 
         // Drain all queued mmWave presence events.
@@ -177,9 +345,23 @@ fn main() -> Result<()> {
         while let Some(event) = mmwave.try_recv() {
             info!("mmWave event: {:?}", event);
             let detected = event == mmwave::PresenceEvent::Detected;
-            apply_presence_event(&mut led, event)?;
-            mqtt.publish_state(&led.state)?;
+            pending_presence_event = Some(event);
             mqtt.publish_presence(detected)?;
+        }
+
+        #[cfg(feature = "mmwave")]
+        if let Some(event) = pending_presence_event {
+            let can_apply = mmwave_settings.lockout_ms == 0
+                || last_presence_apply.map_or(true, |last| {
+                    last.elapsed() >= Duration::from_millis(mmwave_settings.lockout_ms as u64)
+                });
+
+            if can_apply {
+                apply_presence_event(&mut led, event, mmwave_settings.lockout_ms == 0)?;
+                mqtt.publish_state(&led.state)?;
+                last_presence_apply = Some(Instant::now());
+                pending_presence_event = None;
+            }
         }
 
         std::thread::sleep(Duration::from_millis(50));
@@ -221,29 +403,43 @@ where
 fn apply_presence_event<D>(
     led: &mut LedController<D>,
     event: mmwave::PresenceEvent,
+    immediate: bool,
 ) -> Result<()>
 where
     D: SmartLedsWrite<Color = RGB8>,
     D::Error: std::error::Error + Send + Sync + 'static,
 {
-    match event {
+    let target = match event {
         mmwave::PresenceEvent::Detected => {
             let (r, g, b) = config::PRESENCE_COLOR;
-            led.state.on = true;
-            led.state.r = r;
-            led.state.g = g;
-            led.state.b = b;
-            led.state.brightness = config::PRESENCE_BRIGHTNESS;
+            led::LightState {
+                on: true,
+                brightness: config::PRESENCE_BRIGHTNESS,
+                r,
+                g,
+                b,
+            }
         }
         mmwave::PresenceEvent::Gone => {
             let (r, g, b) = config::NO_PRESENCE_COLOR;
-            // Turn the ring off if the no-presence colour is pure black.
-            led.state.on = r != 0 || g != 0 || b != 0;
-            led.state.r = r;
-            led.state.g = g;
-            led.state.b = b;
-            led.state.brightness = config::NO_PRESENCE_BRIGHTNESS;
+            led::LightState {
+                // Turn the ring off if the no-presence colour is pure black.
+                on: r != 0 || g != 0 || b != 0,
+                brightness: config::NO_PRESENCE_BRIGHTNESS,
+                r,
+                g,
+                b,
+            }
         }
+    };
+
+    if immediate {
+        led.apply_state(target)
+    } else {
+        led.transition_to_state(
+            target,
+            config::MMWAVE_TRANSITION_STEPS,
+            Duration::from_millis(config::MMWAVE_TRANSITION_STEP_DELAY_MS),
+        )
     }
-    led.refresh()
 }

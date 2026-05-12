@@ -96,6 +96,38 @@ pub const MMWAVE_STATE_TOPIC: &str = "leapyboi/presence/state";
 #[cfg(feature = "mmwave")]
 pub const MMWAVE_UNIQUE_ID: &str = "leapyboi_presence";
 
+/// MQTT discovery topic for the mmWave transition lockout `number` entity.
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_TRANSITION_LOCKOUT_DISCOVERY_TOPIC: &str =
+    "homeassistant/number/leapyboi_mmwave_transition_lockout/config";
+
+/// MQTT topic where the mmWave transition lockout value (milliseconds) is published.
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_TRANSITION_LOCKOUT_STATE_TOPIC: &str =
+    "leapyboi/mmwave/transition_lockout_ms/state";
+
+/// MQTT topic used to set mmWave transition lockout value (milliseconds).
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_TRANSITION_LOCKOUT_SET_TOPIC: &str =
+    "leapyboi/mmwave/transition_lockout_ms/set";
+
+/// Default lockout between mmWave-driven light transitions in milliseconds.
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_TRANSITION_LOCKOUT_DEFAULT_MS: u32 = 2_000;
+
+/// Warning text logged whenever instant mode is enabled.
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_INSTANT_MODE_WARNING: &str =
+    "WARNING: rapid light transitions within seconds can trigger photosensitive health reactions, including seizure risk.";
+
+/// Number of interpolation steps used for mmWave light transitions.
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_TRANSITION_STEPS: u8 = 12;
+
+/// Delay between interpolation steps used for mmWave transitions.
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_TRANSITION_STEP_DELAY_MS: u64 = 60;
+
 /// LED colour (r, g, b) applied when presence **is** detected.
 /// Adjust to taste; red is the default.
 #[cfg(feature = "mmwave")]
