@@ -110,13 +110,25 @@ where
             return self.apply_state(target);
         }
 
-        let start = self.state;
+        let start = if self.state.on {
+            self.state
+        } else {
+            LightState {
+                on: false,
+                brightness: 0,
+                r: 0,
+                g: 0,
+                b: 0,
+            }
+        };
         let total = u16::from(steps);
 
         for step in 1..=steps {
             let ratio = u16::from(step);
             let mut frame = LightState {
                 // Keep output lit while interpolating to avoid abrupt off-frames mid-fade.
+                // Treat an "off" start state as black so off→on transitions fade up from dark
+                // instead of from stale stored brightness/colour values.
                 // Off→off transitions are already short-circuited by the equality check above.
                 on: start.on || target.on,
                 brightness: lerp_u8(start.brightness, target.brightness, ratio, total),
