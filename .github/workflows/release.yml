@@ -40,14 +40,6 @@ jobs:
     name: Build and Release
     runs-on: ubuntu-latest
 
-    # The official esp-rs image ships the Xtensa/RISC-V Rust toolchain, the
-    # ESP-IDF, espflash, and all required build tools pre-installed.
-    # Pinned to the ESP-IDF version matching .cargo/config.toml (ESP_IDF_VERSION
-    # = v5.2.1).  Update together with the ESP_IDF_VERSION env var if you
-    # upgrade ESP-IDF.
-    container:
-      image: ghcr.io/esp-rs/idf-rust:esp32c6-v5.2.1
-
     permissions:
       contents: write   # needed to create the GitHub Release
 
