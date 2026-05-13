@@ -107,7 +107,7 @@ jobs:
         run: |
           cargo espflash save-image \
             --chip esp32c6 \
-            --output leapyboi.bin \
+            leapyboi.bin \
             target/riscv32imac-esp-espidf/release/leapyboi \
 
       # The device fetches this file first to decide whether a full download is
