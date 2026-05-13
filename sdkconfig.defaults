@@ -30,13 +30,16 @@ CONFIG_BOOTLOADER_LOG_LEVEL_INFO=y
 # ── Flash ─────────────────────────────────────────────────────────────────────
 # 4 MB is the most common flash size for ESP32-C6 modules.
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="/workspaces/leapyboi/partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="/workspaces/leapyboi/partitions.csv"
 
 # ── OTA (over-the-air) updates ────────────────────────────────────────────────
 # Use the built-in two-OTA partition table: nvs + otadata + ota_0 + ota_1.
 # Each OTA slot is ~1.5 MB, which is enough for this firmware.
 # NOTE: switching from the default single-app layout requires a one-time full
 # reflash via USB; subsequent updates can be performed over-the-air.
-CONFIG_PARTITION_TABLE_TWO_OTA=y
+CONFIG_PARTITION_TABLE_TWO_OTA=n
 
 # ── HTTPS / TLS ───────────────────────────────────────────────────────────────
 # Embed the full Mozilla CA certificate bundle so the device can verify

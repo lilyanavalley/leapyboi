@@ -90,25 +90,25 @@ jobs:
           version: "1.95.0.0"
           ldproxy: true
 
-      - name: Install espflash
-        run: cargo install cargo-espflash --locked
+      - name: Install cargo-binstall
+        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 
+      - name: Install espflash
+        run: cargo binstall cargo-espflash
 
       - name: Build firmware
         run: |
           cargo build --release
 
-      # - name: Install espflash
-      #   run: cargo install cargo-espflash --locked
-
       # espflash converts the ELF produced by Cargo into a raw flashable image
       # that esptool.py / the ESP bootloader can consume.
       - name: Save firmware binary
         run: |
-          cargo espflash save-image \
+          cargo espflash save-image --release \
+            --features "mmwave" \
             --chip esp32c6 \
-            leapyboi.bin \
-            target/riscv32imac-esp-espidf/release/leapyboi \
+            target/riscv32imac-esp-espidf/release/leapyboi
+          mv target/riscv32imac-esp-espidf/release/leapyboi leapyboi.bin
 
       # The device fetches this file first to decide whether a full download is
       # needed.  Strip the leading 'v' so it matches CARGO_PKG_VERSION exactly.

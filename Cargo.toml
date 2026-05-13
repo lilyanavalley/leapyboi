@@ -21,7 +21,7 @@ harness = false
 
 # ── Release profile ──────────────────────────────────────────────────────────
 [profile.release]
-opt-level = "s"   # Optimise for size
+opt-level = "z"   # Optimise for size
 
 [profile.dev]
 debug     = true
