@@ -1,3 +1,6 @@
+
+[![leapyboi Logo](/docs/leapyboi.png)](#)
+
 # leapyboi
 
 [![Rust](https://img.shields.io/badge/Rust-%23000000.svg?e&logo=rust&logoColor=white)](#)
@@ -5,27 +8,27 @@
 [![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?logo=github-actions&logoColor=white)](#)
 [![GPL-3 Licensed](https://upload.wikimedia.org/wikipedia/commons/8/86/GPL_v3_Blue_Badge.svg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original)](#)
 
+
 Working model of an ARC Raiders 'Leaper' with features:
+
 - addressable LED ring of NeoPixels,
 - connects to MQTT & HomeAssistant,
 - (optional) mmWave Human presence detection
 
 I wanted to build a reactive Leaper model using [this 3D printable by 3DMN](https://makerworld.com/en/models/2314329-arc-raiders-leaper-articulated-rgb-led#profileId-2526937) (credit to the author for their awesome model!).
-This firmware uses an ESP32-C6 to connect to WiFi and communicates with HomeAssistant via MQTT to do cool things a Leaper would IRL... Including changing the color of the LED ring in response to a person entering/exiting the mmWave detection area.
-As a baseline, this firmware exposes a light entity to HomeAssistant for direct control of the LED ring and consequently any automation(s) you write for it.
+What you see here is firmware for an ESP32-C6 using the **ESP IDF** to connect to WiFi and communicate with **HomeAssistant via MQTT** to do cool things a Leaper would IRL... Including changing the color of the LED ring in response to any automation you write for it.
 
 ---
 
-ESP32-C6 firmware written in Rust that connects a **WS2812B Neopixel LED ring**
-to **HomeAssistant** via **MQTT over WiFi**.
-
-The firmware exposes the ring as a standard HA `light` entity with full
-on/off, brightness (0-255), and RGB colour control.
+Connects a **WS2812B Neopixel LED ring**
+to **HomeAssistant** via **MQTT over WiFi**. This firmware exposes the ring as a standard HA `light` entity with full on/off, brightness (0-255), and RGB colour control.
 
 Optionally, a **Seeed XIAO 24 GHz mmWave Human Static Presence Sensor**
 (MR24HPC1 / X004QXKIDH) can be added to automatically change the ring's colour
 based on whether someone is in the room.  When enabled, a `binary_sensor`
 presence entity also appears in HomeAssistant.
+
+I'm using an ESP32-C6, but with the IDF, you *should* be able to port this code to another ESP32 chip given some tweaking of `cfg.toml` and specifying the correct board when you invoke `cargo`. See instructions below for a sample of this for the C6 chip.
 
 ---
 
@@ -34,13 +37,13 @@ presence entity also appears in HomeAssistant.
 | Component | Notes |
 |-----------|-------|
 | ESP32-C6 dev board | Any module with ≥ 4 MB flash |
-| WS2812B LED ring | 12-LED ring tested; change `LED_COUNT` in `src/config.rs` |
-| 5 V power supply | Power the ring directly; **do not** power a full ring from the USB 5 V rail |
-| 300–500 Ω resistor | In series on the DIN data line to protect against ringing |
-| 1000 µF capacitor | Across the ring's power rails to absorb current spikes |
+| WS2812B LED ring | 24-LED ring tested; change `LED_COUNT` in `src/config.rs` |
+| 5 V power supply | Power the ring directly; **do not** power a full ring from the USB 5V rail |
+| 300–500 Ω resistor | In series on the DIN data line to WS2812B to protect against ringing |
+| 1000 µF capacitor | Across the WS2812B's power rails to absorb current spikes |
 | *(optional)* Seeed XIAO 24 GHz mmWave sensor | UART, 3.3 V; see [mmWave section](#mmwave-presence-sensor-optional) |
 
-**Default wiring**
+### Wiring Diagram
 
 ```
 ESP32-C6 GPIO 2  ──[330Ω]──▶  Ring DIN
@@ -48,20 +51,11 @@ ESP32-C6 GND     ────────────  Ring GND
 5V supply        ────────────  Ring 5V
 ```
 
-For Seeed XIAO ESP32-C6, GPIO 2 maps to header pin D0.
-
-Change the pin in `cfg.toml` → `led_data_pin_num` if you use a different GPIO.
-Any RMT-capable output pin works.
+For a **Seeed XIAO ESP32-C6**, *GPIO 2* maps to header pin *D0*. Change the pin in `cfg.toml` → `led_data_pin_num` if you use a different GPIO pin. ***Make note of the chip's GPIO pin, not the number printed on the board.*** Any RMT-capable output pin works. You can check out [this diagram](https://wiki.seeedstudio.com/xiao_esp32c6_getting_started/#hardware-overview) of the XIAO board for a pinout and the appropriate pin to use.
 
 ### Boot LED self-test
 
-Before WiFi starts, firmware now runs a quick LED self-test sequence
-(red → green → blue → white). If you do not see this sequence, the issue is
-in the LED transport path (pin assignment/wiring/signal level), not MQTT.
-
-The configured LED GPIO is also printed on boot to make pin mismatches obvious.
-
----
+Before WiFi starts, firmware runs a quick LED self-test sequence (red → green → blue → white). If you do not see this sequence, you *might* want to check that the pin you've selected in `cfg.toml` is the GPIO pin you've wired to the WS2812B... The configured LED GPIO is also printed on boot to make pin mismatches obvious.
 
 ## Prerequisites
 
@@ -94,7 +88,7 @@ Nothing extra is needed; the version is pinned in `.cargo/config.toml`
 
 ```bash
 cp cfg.toml.example cfg.toml
-$EDITOR cfg.toml          # fill in WiFi, MQTT broker URL, and MQTT auth fields
+$EDITOR cfg.toml # fill in required fields!
 ```
 
 `cfg.toml` is gitignored to keep credentials out of version control.
@@ -119,6 +113,8 @@ cargo run --release
 > **espflash** auto-detects the serial port.  If it fails, pass the port
 > explicitly: `cargo run --release -- --port /dev/ttyUSB0`
 
+
+
 ---
 
 ## mmWave presence sensor *(optional)*
@@ -130,8 +126,8 @@ The [Seeed XIAO 24 GHz mmWave Human Static Presence Sensor](https://www.seeedstu
 
 | State | LED ring behaviour |
 |-------|--------------------|
-| Person **detected** | Turns **on** with warm-white (configurable in `src/config.rs`) |
-| **No** person detected | Switches to a dim blue tint (or turns off if `NO_PRESENCE_COLOR = (0,0,0)`) |
+| Person **detected** | Turns **on** with red color (configurable in `src/config.rs`) |
+| **No** person detected | Switches to an amber hue (or turns off if `NO_PRESENCE_COLOR = (0,0,0)`) |
 
 To reduce rapid flashing between occupancy changes, mmWave light transitions now use
 two safety mechanisms by default:
@@ -146,7 +142,7 @@ reflected back to HA.
 
 ### Wiring
 
-The sensor operates at **3.3 V** and communicates via **UART at 115 200 baud**.
+The sensor operates at **3.3 V** and communicates via **UART at 115,200 baud**.
 
 ```
 Sensor 3V3  ────────────  ESP32-C6 3V3
@@ -159,13 +155,16 @@ Sensor RX   ────────────  ESP32-C6 GPIO 16 (ESP TX → s
 > configuration commands to the sensor.  For basic presence detection it can
 > be left unconnected.
 
-Change the GPIO numbers in `src/main.rs` (`peripherals.pins.gpio16 / gpio17`)
-to match your actual wiring.
+Set the UART pins in `cfg.toml` to match your actual wiring:
 
-For Seeed XIAO ESP32-C6, the firmware defaults to:
+- `mmwave_uart_tx_pin_num` = ESP TX pin wired to sensor RX
+- `mmwave_uart_rx_pin_num` = ESP RX pin wired to sensor TX
+- `mmwave_uart_port` = UART peripheral (`0` for uart0, `1` for uart1)
 
-- `GPIO16` (D6) as ESP TX → sensor RX
-- `GPIO17` (D7) as ESP RX ← sensor TX
+Current firmware defaults are:
+
+- `GPIO21` as ESP TX → sensor RX
+- `GPIO2` as ESP RX ← sensor TX
 
 ### Enabling the feature
 
@@ -225,8 +224,10 @@ You can change the mmWave transition lockout on-the-fly over MQTT:
 This value is persisted in ESP NVS and restored after reboot.
 
 Setting the lockout to `0` enables **instant mode** (no lockout + no fade).
-⚠️ **Health warning:** instant mode can cause rapid light transitions within seconds,
-which may trigger photosensitive responses (including seizure risk). Use with care.
+
+⚠️ ***Health warning:*** instant mode can cause rapid light transitions within seconds,
+which ***may trigger photosensitive responses*** (including ***seizure risk***). Use with care.
+
 ## Debug logging
 
 On startup, the firmware logs which MQTT authentication mode is active.
