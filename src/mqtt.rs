@@ -100,6 +100,8 @@ impl MqttHandle {
             .context("MQTT mmWave transition lockout subscribe failed")?;
 
         publish_discovery(&mut self.client)?;
+        publish_firmware_version_discovery(&mut self.client)?;
+        self.publish_firmware_version()?;
 
         #[cfg(feature = "mmwave")]
         {
@@ -156,6 +158,19 @@ impl MqttHandle {
     /// Publish the current light state so HomeAssistant can track it.
     pub fn publish_state(&mut self, state: &LightState) -> Result<()> {
         publish_state(&mut self.client, state)
+    }
+
+    /// Publish the currently running firmware version for HomeAssistant diagnostics.
+    pub fn publish_firmware_version(&mut self) -> Result<()> {
+        self.client
+            .publish(
+                config::FIRMWARE_VERSION_STATE_TOPIC,
+                QoS::AtLeastOnce,
+                true, // retain
+                config::FIRMWARE_VERSION.as_bytes(),
+            )
+            .context("failed to publish firmware version")
+            .map(|_| ())
     }
 }
 
@@ -329,7 +344,8 @@ fn publish_discovery(client: &mut EspMqttClient<'static>) -> Result<()> {
     "identifiers": ["{uid}"],
     "name": "{name}",
     "model": "{model}",
-    "manufacturer": "{mfr}"
+    "manufacturer": "{mfr}",
+    "sw_version": "{sw}"
   }}
 }}"#,
         name = config::DEVICE_NAME,
@@ -339,6 +355,7 @@ fn publish_discovery(client: &mut EspMqttClient<'static>) -> Result<()> {
         avail = config::AVAILABILITY_TOPIC,
         model = config::DEVICE_MODEL,
         mfr = config::DEVICE_MANUFACTURER,
+        sw = config::FIRMWARE_VERSION,
     );
 
     client
@@ -378,6 +395,47 @@ fn publish_state(client: &mut EspMqttClient<'static>, state: &LightState) -> Res
         .map(|_| ())
 }
 
+/// Publish HomeAssistant MQTT discovery for a firmware version diagnostic sensor.
+fn publish_firmware_version_discovery(client: &mut EspMqttClient<'static>) -> Result<()> {
+    let payload = format!(
+        r#"{{
+  "name": "Leapyboi Firmware Version",
+  "unique_id": "{uid}",
+  "state_topic": "{state}",
+  "availability_topic": "{avail}",
+  "payload_available": "online",
+  "payload_not_available": "offline",
+  "entity_category": "diagnostic",
+  "icon": "mdi:chip",
+  "device": {{
+    "identifiers": ["{dev_uid}"],
+    "name": "{dev_name}",
+    "model": "{model}",
+    "manufacturer": "{mfr}",
+    "sw_version": "{sw}"
+  }}
+}}"#,
+        uid = config::FIRMWARE_VERSION_UNIQUE_ID,
+        state = config::FIRMWARE_VERSION_STATE_TOPIC,
+        avail = config::AVAILABILITY_TOPIC,
+        dev_uid = config::DEVICE_UNIQUE_ID,
+        dev_name = config::DEVICE_NAME,
+        model = config::DEVICE_MODEL,
+        mfr = config::DEVICE_MANUFACTURER,
+        sw = config::FIRMWARE_VERSION,
+    );
+
+    client
+        .publish(
+            config::FIRMWARE_VERSION_DISCOVERY_TOPIC,
+            QoS::AtLeastOnce,
+            true, // retain
+            payload.as_bytes(),
+        )
+        .context("failed to publish firmware version discovery")
+        .map(|_| ())
+}
+
 /// Publish a HomeAssistant MQTT discovery message for the presence `binary_sensor`.
 ///
 /// Called from [`MqttHandle::on_connected`] whenever the feature is enabled.
@@ -398,7 +456,8 @@ fn publish_presence_discovery(client: &mut EspMqttClient<'static>) -> Result<u32
     "identifiers": ["{dev_uid}"],
     "name": "{dev_name}",
     "model": "{model}",
-    "manufacturer": "{mfr}"
+    "manufacturer": "{mfr}",
+    "sw_version": "{sw}"
   }}
 }}"#,
         uid     = config::MMWAVE_UNIQUE_ID,
@@ -408,6 +467,7 @@ fn publish_presence_discovery(client: &mut EspMqttClient<'static>) -> Result<u32
         dev_name = config::DEVICE_NAME,
         model   = config::DEVICE_MODEL,
         mfr     = config::DEVICE_MANUFACTURER,
+        sw      = config::FIRMWARE_VERSION,
     );
 
     client
@@ -442,7 +502,8 @@ fn publish_transition_lockout_discovery(client: &mut EspMqttClient<'static>) -> 
     "identifiers": ["{dev_uid}"],
     "name": "{dev_name}",
     "model": "{model}",
-    "manufacturer": "{mfr}"
+    "manufacturer": "{mfr}",
+    "sw_version": "{sw}"
   }}
 }}"#,
         uid = "leapyboi_mmwave_transition_lockout_ms",
@@ -453,6 +514,7 @@ fn publish_transition_lockout_discovery(client: &mut EspMqttClient<'static>) -> 
         dev_name = config::DEVICE_NAME,
         model = config::DEVICE_MODEL,
         mfr = config::DEVICE_MANUFACTURER,
+        sw = config::FIRMWARE_VERSION,
     );
 
     client
