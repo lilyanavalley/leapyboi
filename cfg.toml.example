@@ -32,6 +32,18 @@ mqtt_password = "YOUR_MQTT_PASSWORD"
 # XIAO ESP32-C6 default: GPIO2 (D0).
 led_data_pin_num = 2
 
+# mmWave UART TX pin number on the ESP32-C6 (ESP TX -> sensor RX).
+# Change this if your module is wired to a different GPIO.
+mmwave_uart_tx_pin_num = 21
+
+# mmWave UART RX pin number on the ESP32-C6 (ESP RX <- sensor TX).
+# This pin must match the sensor's TX output wire.
+mmwave_uart_rx_pin_num = 2
+
+# UART peripheral for the mmWave sensor.
+# 0 = uart0, 1 = uart1. Default is uart1.
+mmwave_uart_port = 1
+
 # ── OTA (over-the-air) updates ────────────────────────────────────────────────
 
 # Direct download URL for the firmware binary published in GitHub Releases.

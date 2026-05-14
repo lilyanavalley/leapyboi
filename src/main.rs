@@ -23,6 +23,8 @@ use esp_idf_svc::{
     log::EspLogger,
     nvs::EspDefaultNvsPartition,
 };
+#[cfg(feature = "mmwave")]
+use esp_idf_svc::hal::gpio::AnyIOPin;
 use log::info;
 #[cfg(feature = "mmwave")]
 use log::warn;
@@ -246,14 +248,37 @@ fn main() -> Result<()> {
     #[cfg(feature = "mmwave")]
     let mmwave = {
         info!("Initialising mmWave presence sensor…");
-        // GPIO 5 → sensor RX (ESP transmits commands, optional)
-        // GPIO 4 ← sensor TX (ESP receives the data stream)
-        // Adjust these pins in src/main.rs to match your physical wiring.
-        mmwave::start(
-            peripherals.uart1,
-            peripherals.pins.gpio16, // ESP TX → sensor RX
-            peripherals.pins.gpio17, // ESP RX ← sensor TX
-        )?
+        let mmwave_uart_port = config::mmwave_uart_port();
+        let mmwave_tx_pin_num = config::mmwave_uart_tx_pin_num();
+        let mmwave_rx_pin_num = config::mmwave_uart_rx_pin_num();
+        info!(
+            "mmWave UART configured: uart{} TX=GPIO{} (ESP->sensor), RX=GPIO{} (sensor->ESP)",
+            mmwave_uart_port, mmwave_tx_pin_num, mmwave_rx_pin_num
+        );
+
+        // Runtime-selected UART peripheral and pins allow wiring and routing
+        // changes via cfg.toml without touching source.
+        match mmwave_uart_port {
+            0 => {
+                let mmwave_tx_pin = unsafe { AnyIOPin::new(mmwave_tx_pin_num) };
+                let mmwave_rx_pin = unsafe { AnyIOPin::new(mmwave_rx_pin_num) };
+                mmwave::start(
+                    peripherals.uart0,
+                    mmwave_tx_pin, // ESP TX → sensor RX
+                    mmwave_rx_pin, // ESP RX ← sensor TX
+                )?
+            }
+            1 => {
+                let mmwave_tx_pin = unsafe { AnyIOPin::new(mmwave_tx_pin_num) };
+                let mmwave_rx_pin = unsafe { AnyIOPin::new(mmwave_rx_pin_num) };
+                mmwave::start(
+                    peripherals.uart1,
+                    mmwave_tx_pin, // ESP TX → sensor RX
+                    mmwave_rx_pin, // ESP RX ← sensor TX
+                )?
+            }
+            _ => unreachable!("MMWAVE_UART_PORT is validated in config::mmwave_uart_port"),
+        }
     };
 
     #[cfg(feature = "mmwave")]

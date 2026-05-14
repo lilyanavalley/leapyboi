@@ -56,6 +56,46 @@ pub fn led_data_pin_num() -> i32 {
 		.expect("LED_DATA_PIN_NUM must be a valid integer in cfg.toml")
 }
 
+/// GPIO number used as ESP TX for the mmWave UART (ESP TX -> sensor RX).
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_UART_TX_PIN_NUM: &str = env!("MMWAVE_UART_TX_PIN_NUM");
+
+/// Parsed mmWave UART TX pin number loaded from cfg.toml at compile time.
+#[cfg(feature = "mmwave")]
+pub fn mmwave_uart_tx_pin_num() -> i32 {
+	MMWAVE_UART_TX_PIN_NUM
+		.parse::<i32>()
+		.expect("MMWAVE_UART_TX_PIN_NUM must be a valid integer in cfg.toml")
+}
+
+/// GPIO number used as ESP RX for the mmWave UART (ESP RX <- sensor TX).
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_UART_RX_PIN_NUM: &str = env!("MMWAVE_UART_RX_PIN_NUM");
+
+/// Parsed mmWave UART RX pin number loaded from cfg.toml at compile time.
+#[cfg(feature = "mmwave")]
+pub fn mmwave_uart_rx_pin_num() -> i32 {
+	MMWAVE_UART_RX_PIN_NUM
+		.parse::<i32>()
+		.expect("MMWAVE_UART_RX_PIN_NUM must be a valid integer in cfg.toml")
+}
+
+/// UART peripheral index used for mmWave (`0` = uart0, `1` = uart1).
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_UART_PORT: &str = env!("MMWAVE_UART_PORT");
+
+/// Parsed mmWave UART peripheral index loaded from cfg.toml at compile time.
+#[cfg(feature = "mmwave")]
+pub fn mmwave_uart_port() -> u8 {
+	let port = MMWAVE_UART_PORT
+		.parse::<u8>()
+		.expect("MMWAVE_UART_PORT must be a valid integer in cfg.toml");
+	match port {
+		0 | 1 => port,
+		_ => panic!("MMWAVE_UART_PORT must be 0 (uart0) or 1 (uart1)"),
+	}
+}
+
 /// Number of LEDs in the ring.  Change to match your specific ring module.
 pub const LED_COUNT: usize = 24;
 

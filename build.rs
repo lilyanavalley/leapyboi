@@ -40,6 +40,15 @@ struct AppConfig {
     #[serde(default = "default_led_data_pin_num")]
     led_data_pin_num: i32,
 
+    #[serde(default = "default_mmwave_uart_tx_pin_num")]
+    mmwave_uart_tx_pin_num: i32,
+
+    #[serde(default = "default_mmwave_uart_rx_pin_num")]
+    mmwave_uart_rx_pin_num: i32,
+
+    #[serde(default = "default_mmwave_uart_port")]
+    mmwave_uart_port: i32,
+
     #[serde(default)]
     ota_firmware_url: String,
 
@@ -57,6 +66,18 @@ fn default_client_id() -> String {
 
 fn default_led_data_pin_num() -> i32 {
     2
+}
+
+fn default_mmwave_uart_tx_pin_num() -> i32 {
+    21
+}
+
+fn default_mmwave_uart_rx_pin_num() -> i32 {
+    2
+}
+
+fn default_mmwave_uart_port() -> i32 {
+    1
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
@@ -81,6 +102,15 @@ fn main() {
         emit_env("MQTT_USERNAME", &app.mqtt_username);
         emit_env("MQTT_PASSWORD", &app.mqtt_password);
         emit_env("LED_DATA_PIN_NUM", &app.led_data_pin_num.to_string());
+        emit_env(
+            "MMWAVE_UART_TX_PIN_NUM",
+            &app.mmwave_uart_tx_pin_num.to_string(),
+        );
+        emit_env(
+            "MMWAVE_UART_RX_PIN_NUM",
+            &app.mmwave_uart_rx_pin_num.to_string(),
+        );
+        emit_env("MMWAVE_UART_PORT", &app.mmwave_uart_port.to_string());
         emit_env("OTA_FIRMWARE_URL", &app.ota_firmware_url);
         emit_env("OTA_VERSION_URL", &app.ota_version_url);
     } else {
@@ -94,6 +124,9 @@ fn main() {
         emit_env("MQTT_USERNAME", "");
         emit_env("MQTT_PASSWORD", "");
         emit_env("LED_DATA_PIN_NUM", "2");
+        emit_env("MMWAVE_UART_TX_PIN_NUM", "21");
+        emit_env("MMWAVE_UART_RX_PIN_NUM", "2");
+        emit_env("MMWAVE_UART_PORT", "1");
         emit_env("OTA_FIRMWARE_URL", "");
         emit_env("OTA_VERSION_URL", "");
 
