@@ -102,7 +102,7 @@ jobs:
 
       - name: Build firmware
         run: |
-          cargo build --release
+          cargo build --release --features "mmwave"
 
       # espflash converts the ELF produced by Cargo into a raw flashable image
       # that esptool.py / the ESP bootloader can consume.
