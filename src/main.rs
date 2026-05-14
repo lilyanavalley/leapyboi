@@ -118,7 +118,7 @@ fn read_transition_lockout_from_nvs() -> Result<Option<u32>> {
             &mut handle,
         )
     };
-    if open_err != sys::ESP_OK as _ {
+    if open_err != sys::ESP_OK {
         return Err(anyhow!("nvs_open(readonly) failed: {}", open_err));
     }
 
@@ -126,9 +126,9 @@ fn read_transition_lockout_from_nvs() -> Result<Option<u32>> {
     let get_err = unsafe { sys::nvs_get_u32(handle, key.as_ptr(), &mut value) };
     unsafe { sys::nvs_close(handle) };
 
-    if get_err == sys::ESP_OK as _ {
+    if get_err == sys::ESP_OK {
         Ok(Some(value))
-    } else if get_err == sys::ESP_ERR_NVS_NOT_FOUND as _ {
+    } else if get_err == sys::ESP_ERR_NVS_NOT_FOUND {
         Ok(None)
     } else {
         Err(anyhow!("nvs_get_u32 failed: {}", get_err))
@@ -149,19 +149,19 @@ fn write_transition_lockout_to_nvs(lockout_ms: u32) -> Result<()> {
             &mut handle,
         )
     };
-    if open_err != sys::ESP_OK as _ {
+    if open_err != sys::ESP_OK {
         return Err(anyhow!("nvs_open(readwrite) failed: {}", open_err));
     }
 
     let set_err = unsafe { sys::nvs_set_u32(handle, key.as_ptr(), lockout_ms) };
-    if set_err != sys::ESP_OK as _ {
+    if set_err != sys::ESP_OK {
         unsafe { sys::nvs_close(handle) };
         return Err(anyhow!("nvs_set_u32 failed: {}", set_err));
     }
 
     let commit_err = unsafe { sys::nvs_commit(handle) };
     unsafe { sys::nvs_close(handle) };
-    if commit_err != sys::ESP_OK as _ {
+    if commit_err != sys::ESP_OK {
         return Err(anyhow!("nvs_commit failed: {}", commit_err));
     }
 
