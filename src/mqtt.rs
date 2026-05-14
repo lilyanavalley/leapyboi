@@ -399,7 +399,7 @@ fn publish_state(client: &mut EspMqttClient<'static>, state: &LightState) -> Res
 fn publish_firmware_version_discovery(client: &mut EspMqttClient<'static>) -> Result<()> {
     let payload = format!(
         r#"{{
-  "name": "Leapyboi Firmware Version",
+  "name": "{name}",
   "unique_id": "{uid}",
   "state_topic": "{state}",
   "availability_topic": "{avail}",
@@ -416,6 +416,7 @@ fn publish_firmware_version_discovery(client: &mut EspMqttClient<'static>) -> Re
   }}
 }}"#,
         uid = config::FIRMWARE_VERSION_UNIQUE_ID,
+        name = config::FIRMWARE_VERSION_ENTITY_NAME,
         state = config::FIRMWARE_VERSION_STATE_TOPIC,
         avail = config::AVAILABILITY_TOPIC,
         dev_uid = config::DEVICE_UNIQUE_ID,

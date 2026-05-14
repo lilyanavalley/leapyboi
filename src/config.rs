@@ -120,6 +120,8 @@ pub const DEVICE_NAME: &str = "Leapyboi Ring";
 pub const DEVICE_MODEL: &str = "ESP32-C6";
 pub const DEVICE_MANUFACTURER: &str = "DIY";
 pub const DEVICE_UNIQUE_ID: &str = "leapyboi_ring_light";
+
+/// Firmware version currently running on the device.
 pub const FIRMWARE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// MQTT discovery topic for the firmware version diagnostic sensor.
@@ -131,6 +133,9 @@ pub const FIRMWARE_VERSION_STATE_TOPIC: &str = "leapyboi/firmware/version";
 
 /// Unique ID used in the HA firmware version sensor discovery payload.
 pub const FIRMWARE_VERSION_UNIQUE_ID: &str = "leapyboi_firmware_version";
+
+/// Entity display name shown in Home Assistant for firmware version reporting.
+pub const FIRMWARE_VERSION_ENTITY_NAME: &str = "Leapyboi Firmware Version";
 
 // ── mmWave presence sensor (optional — enable with `--features mmwave`) ───────
 
