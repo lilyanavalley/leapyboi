@@ -260,7 +260,7 @@ automatically under **Settings → Devices & Services → MQTT**.
 
 It also publishes a retained **Leapyboi Firmware Version** diagnostic sensor,
 so you can verify OTA updates have applied by checking the currently running
-firmware version directly in HomeAssistant.
+firmware version directly in Home Assistant.
 
 No manual YAML configuration is required.
 
