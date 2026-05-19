@@ -27,6 +27,39 @@
 				"check"
 			],
 			"isBackground": false
+		},
+		{
+			"label": "cargo check mmwave feature",
+			"type": "shell",
+			"command": "cargo",
+			"args": [
+				"check",
+				"--features",
+				"mmwave"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "cargo check mmwave feature",
+			"type": "shell",
+			"command": "cargo",
+			"args": [
+				"check",
+				"--features",
+				"mmwave"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "cargo check mmwave uart port cfg",
+			"type": "shell",
+			"command": "cargo",
+			"args": [
+				"check",
+				"--features",
+				"mmwave"
+			],
+			"isBackground": false
 		}
 	]
 }

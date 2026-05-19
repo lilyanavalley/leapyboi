@@ -1,6 +1,6 @@
 [package]
 name        = "leapyboi"
-version     = "0.1.0"
+version     = "0.3.0"
 edition     = "2021"
 description = "ESP32-C6 firmware: WS2812B Neopixel ring light controlled over MQTT / HomeAssistant"
 resolver    = "2"
