@@ -1,6 +1,6 @@
 [package]
 name        = "leapyboi"
-version     = "0.2.0"
+version     = "0.3.0"
 edition     = "2021"
 description = "ESP32-C6 firmware: WS2812B Neopixel ring light controlled over MQTT / HomeAssistant"
 resolver    = "2"
@@ -60,3 +60,5 @@ embuild = { version = "=0.31.4", features = ["espidf"] }
 # Used in build.rs to parse cfg.toml.
 toml  = "0.8"
 serde = { version = "1", features = ["derive"] }
+# Used in build.rs to decode animation.png into a firmware-baked const array.
+png = "0.17"
