@@ -99,23 +99,41 @@ firmware binary.
 
 ## Build & flash
 
+Here are some common commands to invoke a build process (mix and match according to your needs.)
+
 ```bash
 # Debug build (larger binary, serial logging enabled)
-cargo build
+cargo build --target riscv32imac-esp-espidf
 
 # Release build (size-optimised)
-cargo build --release
+cargo build --target riscv32imac-esp-espidf --release
 
 # Build, flash, and open the serial monitor in one step
-cargo run --release
+cargo run --target riscv32imac-esp-espidf
 ```
 
-> **espflash** auto-detects the serial port.  If it fails, pass the port
-> explicitly: `cargo run --release -- --port /dev/ttyUSB0`
+**espflash** auto-detects the serial port.  If it fails, pass the port (changing `/dev/ttyUSB0` to the applicable port):
 
+```bash
+cargo run --release --target riscv32imac-esp-espidf -- --port /dev/ttyUSB0
+```
 
+There are a lot of different invocation parameters you can use to customize leapyboi, but here's the rundow:
+
+- `build` just builds the project, `run` holds the serial monitor open while running
+- `--target <...>` selects the platform you're building for [^1]
+- `--release` is a release optimization flag to strip debug symbols from binary
+- `--features <...>` selects features to *include* in your binary [^2]
 
 ---
+
+## Testing
+
+Tests are run on your local platform without touching the ESP chip whatsoever. Default features (`esp32`) are disabled including the IDF runtime. The `--lib` flag compiles this project as a library so that your system doesn't require all of the overhead to *building* an ESP image.
+
+```bash
+cargo test --no-default-features --lib
+```
 
 ---
 
@@ -202,8 +220,10 @@ continuously.
 5. Rebuild and reflash:
 
 ```bash
-cargo build --release      # build.rs decodes the PNG and bakes it in
-cargo run  --release       # flash + open serial monitor
+# build.rs decodes the PNG and bakes it in
+cargo build --release --target riscv32imac-esp-espidf
+# flash + open serial monitor
+cargo run --release --target riscv32imac-esp-espidf
 ```
 
 If the image dimensions are wrong the build will fail with a helpful error.
@@ -287,13 +307,13 @@ Current firmware defaults are:
 
 ```bash
 # Debug build with mmWave support
-cargo build --features mmwave
+cargo build --features mmwave --target riscv32imac-esp-espidf
 
 # Release build
-cargo build --release --features mmwave
+cargo build --release --features mmwave --target riscv32imac-esp-espidf
 
 # Build, flash, and monitor
-cargo run --release --features mmwave
+cargo run --release --features mmwave --target riscv32imac-esp-espidf
 ```
 
 ### Supported UART frame protocols
@@ -433,3 +453,9 @@ leapyboi/
 This software is licensed under the GNU General Public License, version 3.
 
 [![GNU GPL-3 License Logo](https://upload.wikimedia.org/wikipedia/commons/9/93/GPLv3_Logo.svg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original)](#)
+
+## Footnotes
+
+[^1]: The `riscv32imac-esp-espidf` target is the one for RISC-V ESP chips. You'll invoke this target (explicitly, it **is** required) when you want to flash an image. When you invoke your native target for testing, say, on x86 Linux: `x86_64-unknown-linux-gnu`.  
+
+[^2]: Features include: `mmwave`, `mmwave-diagnostics`. The `esp32` feature is included by default, so if you want to test locally, omit this feature with: `--no-default-features`.

@@ -31,9 +31,9 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "mmwave")]
 use serde_json::Value;
 
-use crate::config;
-use crate::led::LightState;
-use crate::animations::AnimationType;
+use leapyboi::config;
+use leapyboi::led::LightState;
+use leapyboi::animations::AnimationType;
 
 // ── JSON payload types ────────────────────────────────────────────────────────
 

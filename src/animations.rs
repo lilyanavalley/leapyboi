@@ -44,7 +44,8 @@ use crate::config::{
 //   pub const CUSTOM_ANIMATION_FRAME_LEDS: usize  — number of columns (LEDs per frame)
 include!(concat!(env!("OUT_DIR"), "/custom_anim.rs"));
 
-// Compile-time guard: the PNG width must match the configured LED count.
+// Compile-time guard: frame count must either be zero, or the PNG width must match the
+// configured LED count.
 const _: () = assert!(
     CUSTOM_ANIMATION_FRAME_COUNT == 0 || CUSTOM_ANIMATION_FRAME_LEDS == LED_COUNT,
     "animation.png width must equal LED_COUNT (src/config.rs). \
@@ -77,11 +78,19 @@ impl AnimationType {
     ///
     /// Unknown names fall back to [`AnimationType::Solid`].
     pub fn from_effect_name(name: &str) -> Self {
+        Self::from_effect_name_with_custom(name, CUSTOM_ANIMATION_FRAME_COUNT > 0)
+    }
+
+    /// Construct from an HA effect name with explicit custom-animation support.
+    ///
+    /// This allows tests to validate behavior deterministically regardless of
+    /// whether `animation.png` was present at build time.
+    fn from_effect_name_with_custom(name: &str, has_custom: bool) -> Self {
         match name {
             "rainbow" => Self::Rainbow,
             "spinning" => Self::Spinning,
             "breathe" => Self::Breathe,
-            "custom" if CUSTOM_ANIMATION_FRAME_COUNT > 0 => Self::Custom,
+            "custom" if has_custom => Self::Custom,
             _ => Self::Solid,
         }
     }
@@ -102,10 +111,22 @@ impl AnimationType {
     /// `"custom"` is only included when `animation.png` was present at the
     /// last build (i.e. `CUSTOM_ANIMATION_FRAME_COUNT > 0`).
     pub fn effect_list() -> &'static [&'static str] {
-        if CUSTOM_ANIMATION_FRAME_COUNT > 0 {
-            &["solid", "rainbow", "spinning", "breathe", "custom"]
+        Self::effect_list_with_custom(CUSTOM_ANIMATION_FRAME_COUNT > 0)
+    }
+
+    /// Effect list with explicit custom-animation support.
+    ///
+    /// This allows tests to cover both branches without relying on generated
+    /// constants from `build.rs`.
+    fn effect_list_with_custom(has_custom: bool) -> &'static [&'static str] {
+        const EFFECTS_BASE: &[&str] = &["solid", "rainbow", "spinning", "breathe"];
+        const EFFECTS_WITH_CUSTOM: &[&str] =
+            &["solid", "rainbow", "spinning", "breathe", "custom"];
+
+        if has_custom {
+            EFFECTS_WITH_CUSTOM
         } else {
-            &["solid", "rainbow", "spinning", "breathe"]
+            EFFECTS_BASE
         }
     }
 }
@@ -242,11 +263,40 @@ fn breathe(r: u8, g: u8, b: u8, max_brightness: u8, phase: u32) -> [RGB8; LED_CO
 
 /// Play one frame from the baked-in custom animation data.
 fn custom_frame(brightness: u8, phase: u32) -> [RGB8; LED_COUNT] {
-    // Advance one frame every ANIM_CUSTOM_TICKS_PER_FRAME ticks.
-    let frame_idx = (phase as usize / ANIM_CUSTOM_TICKS_PER_FRAME as usize)
-        % CUSTOM_ANIMATION_FRAME_COUNT;
+    custom_frame_from_data(
+        brightness,
+        phase,
+        CUSTOM_ANIMATION_FRAMES,
+        CUSTOM_ANIMATION_FRAME_COUNT,
+        ANIM_CUSTOM_TICKS_PER_FRAME,
+    )
+}
+
+/// Render a custom-animation frame from caller-provided data.
+///
+/// This helper exists so tests can exercise both "no frames" and
+/// "frames present" paths deterministically without depending on build-script
+/// generated constants from `animation.png`.
+fn custom_frame_from_data(
+    brightness: u8,
+    phase: u32,
+    frames: &[u8],
+    frame_count: usize,
+    ticks_per_frame: u32,
+) -> [RGB8; LED_COUNT] {
+    if frame_count == 0 || ticks_per_frame == 0 {
+        // Fixes bug #7 — if there are no frames, return all-off instead of panicking on divide by zero.
+        return [RGB8::new(0, 0, 0); LED_COUNT];
+    }
+
+    let frame_stride = LED_COUNT * 3;
+    if frames.len() < frame_count.saturating_mul(frame_stride) {
+        return [RGB8::new(0, 0, 0); LED_COUNT];
+    }
+
+    let frame_idx = (phase as usize / ticks_per_frame as usize) % frame_count;
     let frame_start = frame_idx * LED_COUNT * 3;
-    let frame = &CUSTOM_ANIMATION_FRAMES[frame_start..frame_start + LED_COUNT * 3];
+    let frame = &frames[frame_start..frame_start + LED_COUNT * 3];
 
     let mut pixels = [RGB8::new(0, 0, 0); LED_COUNT];
     for i in 0..LED_COUNT {
@@ -257,4 +307,71 @@ fn custom_frame(brightness: u8, phase: u32) -> [RGB8; LED_COUNT] {
         );
     }
     pixels
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_effect_name_custom_maps_to_solid_when_custom_is_unavailable() {
+        let effect = AnimationType::from_effect_name_with_custom("custom", false);
+        assert_eq!(effect, AnimationType::Solid);
+    }
+
+    #[test]
+    fn from_effect_name_custom_maps_to_custom_when_custom_is_available() {
+        let effect = AnimationType::from_effect_name_with_custom("custom", true);
+        assert_eq!(effect, AnimationType::Custom);
+    }
+
+    #[test]
+    fn effect_list_excludes_custom_when_unavailable() {
+        let effects = AnimationType::effect_list_with_custom(false);
+        assert_eq!(effects, &["solid", "rainbow", "spinning", "breathe"]);
+    }
+
+    #[test]
+    fn effect_list_includes_custom_when_available() {
+        let effects = AnimationType::effect_list_with_custom(true);
+        assert_eq!(
+            effects,
+            &["solid", "rainbow", "spinning", "breathe", "custom"]
+        );
+    }
+
+    #[test]
+    fn custom_frame_returns_off_when_no_frames() {
+        let result = custom_frame_from_data(255, 0, &[], 0, 1);
+        assert_eq!(result, [RGB8::new(0, 0, 0); LED_COUNT]);
+    }
+
+    #[test]
+    fn custom_frame_renders_injected_frame_data() {
+        let mut frames = vec![0u8; LED_COUNT * 3 * 2];
+
+        // Frame 0, LED 0 -> (100, 10, 1)
+        frames[0] = 100;
+        frames[1] = 10;
+        frames[2] = 1;
+
+        // Frame 1, LED 0 -> (0, 50, 5)
+        let frame1 = LED_COUNT * 3;
+        frames[frame1] = 0;
+        frames[frame1 + 1] = 50;
+        frames[frame1 + 2] = 5;
+
+        let result0 = custom_frame_from_data(255, 0, &frames, 2, 1);
+        let result1 = custom_frame_from_data(255, 1, &frames, 2, 1);
+
+        assert_eq!(result0[0], RGB8::new(100, 10, 1));
+        assert_eq!(result1[0], RGB8::new(0, 50, 5));
+    }
+
+    #[test]
+    fn custom_frame_returns_off_when_ticks_per_frame_is_zero() {
+        let frames = vec![255u8; LED_COUNT * 3];
+        let result = custom_frame_from_data(255, 0, &frames, 1, 0);
+        assert_eq!(result, [RGB8::new(0, 0, 0); LED_COUNT]);
+    }
 }
