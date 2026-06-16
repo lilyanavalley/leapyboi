@@ -52,6 +52,9 @@ use leapyboi::led::LedController;
 #[cfg(feature = "esp32")]
 use leapyboi::animations::AnimationType;
 
+mod animations;
+mod led;
+
 // Hardware-specific modules (not testable without ESP)
 #[cfg(feature = "esp32")]
 mod mqtt;
