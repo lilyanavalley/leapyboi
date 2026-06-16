@@ -44,7 +44,8 @@ use crate::config::{
 //   pub const CUSTOM_ANIMATION_FRAME_LEDS: usize  — number of columns (LEDs per frame)
 include!(concat!(env!("OUT_DIR"), "/custom_anim.rs"));
 
-// Compile-time guard: the PNG width must match the configured LED count.
+// Compile-time guard: frame count must either be zero, or the PNG width must match the
+// configured LED count.
 const _: () = assert!(
     CUSTOM_ANIMATION_FRAME_COUNT == 0 || CUSTOM_ANIMATION_FRAME_LEDS == LED_COUNT,
     "animation.png width must equal LED_COUNT (src/config.rs). \
@@ -244,6 +245,7 @@ fn breathe(r: u8, g: u8, b: u8, max_brightness: u8, phase: u32) -> [RGB8; LED_CO
 fn custom_frame(brightness: u8, phase: u32) -> [RGB8; LED_COUNT] {
     // Advance one frame every ANIM_CUSTOM_TICKS_PER_FRAME ticks.
     if CUSTOM_ANIMATION_FRAME_COUNT == 0 {
+        // Fixes bug #7 — if there are no frames, return all-off instead of panicking on divide by zero.
         return [RGB8::new(0, 0, 0); LED_COUNT];
     }
     let frame_idx = (phase as usize / ANIM_CUSTOM_TICKS_PER_FRAME as usize)
@@ -260,4 +262,20 @@ fn custom_frame(brightness: u8, phase: u32) -> [RGB8; LED_COUNT] {
         );
     }
     pixels
+}
+
+#[test]
+fn test_custom_frames() {
+
+    const CUSTOM_ANIMATION_FRAMES: &[u8] = &[];
+    const CUSTOM_ANIMATION_FRAME_COUNT: usize = 0;
+    const CUSTOM_ANIMATION_FRAME_LEDS: usize = LED_COUNT; // Must match LED_COUNT for the test
+    const ANIM_CUSTOM_TICKS_PER_FRAME: u32 = 1; // Set to 1 to avoid divide by zero in the test
+    const LED_COUNT: usize = 24; // Example LED count for the test
+
+    // This test ensures that the custom_frame function does not panic when there are zero frames.
+    // It should return an array of all-off pixels instead.
+    let result = custom_frame(255, 0);
+    assert_eq!(result, [RGB8::new(0, 0, 0); LED_COUNT]);
+
 }

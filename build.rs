@@ -158,7 +158,11 @@ fn main() {
     generate_custom_anim(&manifest_dir);
 
     // Emit ESP-IDF build environment variables (linker search paths, etc.).
-    embuild::espidf::sysenv::output();
+    // Only needed when building for the ESP target, not for host tests.
+    let target = std::env::var("TARGET").unwrap_or_default();
+    if target.contains("esp") || target.contains("riscv32imac") {
+        embuild::espidf::sysenv::output();
+    }
 }
 
 fn emit_env(key: &str, value: &str) {
