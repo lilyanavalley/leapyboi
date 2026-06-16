@@ -12,7 +12,9 @@
 ///   6. LED ring: brief blue pulse (MQTT connected)
 ///   7. Main loop: apply incoming HA commands and publish state
 
+#[cfg(feature = "esp32")]
 use std::sync::atomic::Ordering;
+#[cfg(feature = "esp32")]
 use std::time::Duration;
 
 // * mmwave-specific imports are gated behind the "mmwave" feature flag.
@@ -23,7 +25,9 @@ use std::ffi::CString;
 #[cfg(feature = "mmwave")]
 use std::time::Instant;
 
+#[cfg(feature = "esp32")]
 use anyhow::{anyhow, Result};
+#[cfg(feature = "esp32")]
 use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
     hal::gpio::AnyOutputPin,
@@ -33,24 +37,36 @@ use esp_idf_svc::{
 };
 #[cfg(feature = "mmwave")]
 use esp_idf_svc::hal::gpio::AnyIOPin;
+#[cfg(feature = "esp32")]
 use log:: { debug, info, warn, error };
+#[cfg(feature = "esp32")]
 use smart_leds::{SmartLedsWrite, RGB8};
+#[cfg(feature = "esp32")]
 use ws2812_esp32_rmt_driver::{driver::color::LedPixelColorGrb24, LedPixelEsp32Rmt};
 
-mod config;
-mod led;
+// Import from the leapyboi library
+#[cfg(feature = "esp32")]
+use leapyboi::config;
+#[cfg(feature = "esp32")]
+use leapyboi::led::LedController;
+#[cfg(feature = "esp32")]
+use leapyboi::animations::AnimationType;
+
+// Hardware-specific modules (not testable without ESP)
+#[cfg(feature = "esp32")]
 mod mqtt;
+#[cfg(feature = "esp32")]
 mod ota;
+#[cfg(feature = "esp32")]
 mod wifi;
-mod animations;
-#[cfg(feature = "mmwave")]
+#[cfg(all(feature = "esp32", feature = "mmwave"))]
 mod mmwave;
 
-use led::LedController;
+#[cfg(feature = "esp32")]
 use mqtt::{IncomingCommand, LightCommand, SwitchCommand};
-use animations::AnimationType;
 
 
+#[cfg(feature = "esp32")]
 fn run_startup_led_self_test<D>(led: &mut LedController<D>) -> Result<()>
 where
     D: SmartLedsWrite<Color = RGB8>,
@@ -96,11 +112,13 @@ impl Default for MmwaveTransitionSettings {
 ///
 /// HomeAssistant discovery advertises a maximum of `10000` ms, so values above
 /// that are reduced to keep runtime behavior consistent with UI limits.
+#[cfg(feature = "esp32")]
 fn normalize_transition_lockout_ms(lockout_ms: u32) -> u32 {
     lockout_ms.min(10_000)
 }
 
 #[cfg(feature = "mmwave")]
+#[cfg(feature = "esp32")]
 fn log_instant_mode_warning(source: &str) {
     warn!(
         "mmWave instant transition mode enabled via {source}. {}",
@@ -109,6 +127,7 @@ fn log_instant_mode_warning(source: &str) {
 }
 
 #[cfg(feature = "mmwave")]
+#[cfg(feature = "esp32")]
 fn read_transition_lockout_from_nvs() -> Result<Option<u32>> {
     let namespace = CString::new(MMWAVE_SETTINGS_NVS_NAMESPACE)?;
     let key = CString::new(MMWAVE_TRANSITION_LOCKOUT_NVS_KEY)?;
@@ -139,6 +158,7 @@ fn read_transition_lockout_from_nvs() -> Result<Option<u32>> {
 }
 
 #[cfg(feature = "mmwave")]
+#[cfg(feature = "esp32")]
 fn write_transition_lockout_to_nvs(lockout_ms: u32) -> Result<()> {
     let lockout_ms = normalize_transition_lockout_ms(lockout_ms);
     let namespace = CString::new(MMWAVE_SETTINGS_NVS_NAMESPACE)?;
@@ -171,6 +191,7 @@ fn write_transition_lockout_to_nvs(lockout_ms: u32) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "esp32")]
 fn main() -> Result<()> {
     // Patch the runtime — must be called before anything else.
     // See: https://github.com/esp-rs/esp-idf-template/issues/71
@@ -451,6 +472,7 @@ fn main() -> Result<()> {
 // ── Command handler ───────────────────────────────────────────────────────────
 
 /// Apply a single HomeAssistant light command to the LED ring.
+#[cfg(feature = "esp32")]
 fn apply_command<D>(led: &mut LedController<D>, cmd: &LightCommand) -> Result<()>
 where
     D: SmartLedsWrite<Color = RGB8>,
@@ -488,6 +510,7 @@ where
 /// - `Detected` → turn the ring on with the configured presence colour and animation.
 /// - `Gone`     → switch to the no-presence colour/animation (or turn off if `(0, 0, 0)`).
 #[cfg(feature = "mmwave")]
+#[cfg(feature = "esp32")]
 fn apply_presence_event<D>(
     led: &mut LedController<D>,
     event: mmwave::PresenceEvent,
