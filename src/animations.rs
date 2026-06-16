@@ -243,6 +243,9 @@ fn breathe(r: u8, g: u8, b: u8, max_brightness: u8, phase: u32) -> [RGB8; LED_CO
 /// Play one frame from the baked-in custom animation data.
 fn custom_frame(brightness: u8, phase: u32) -> [RGB8; LED_COUNT] {
     // Advance one frame every ANIM_CUSTOM_TICKS_PER_FRAME ticks.
+    if CUSTOM_ANIMATION_FRAME_COUNT == 0 {
+        return [RGB8::new(0, 0, 0); LED_COUNT];
+    }
     let frame_idx = (phase as usize / ANIM_CUSTOM_TICKS_PER_FRAME as usize)
         % CUSTOM_ANIMATION_FRAME_COUNT;
     let frame_start = frame_idx * LED_COUNT * 3;
