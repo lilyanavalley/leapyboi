@@ -12,10 +12,22 @@
 ///   6. LED ring: brief blue pulse (MQTT connected)
 ///   7. Main loop: apply incoming HA commands and publish state
 
+#[cfg(feature = "esp32")]
 use std::sync::atomic::Ordering;
+#[cfg(feature = "esp32")]
 use std::time::Duration;
 
+// * mmwave-specific imports are gated behind the "mmwave" feature flag.
+#[cfg(feature = "mmwave")]
+use esp_idf_svc::sys;
+#[cfg(feature = "mmwave")]
+use std::ffi::CString;
+#[cfg(feature = "mmwave")]
+use std::time::Instant;
+
+#[cfg(feature = "esp32")]
 use anyhow::{anyhow, Result};
+#[cfg(feature = "esp32")]
 use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
     hal::gpio::AnyOutputPin,
@@ -25,31 +37,36 @@ use esp_idf_svc::{
 };
 #[cfg(feature = "mmwave")]
 use esp_idf_svc::hal::gpio::AnyIOPin;
-use log::info;
-#[cfg(feature = "mmwave")]
-use log::warn;
+#[cfg(feature = "esp32")]
+use log:: { debug, info, warn, error };
+#[cfg(feature = "esp32")]
 use smart_leds::{SmartLedsWrite, RGB8};
+#[cfg(feature = "esp32")]
 use ws2812_esp32_rmt_driver::{driver::color::LedPixelColorGrb24, LedPixelEsp32Rmt};
 
-mod config;
-mod led;
-mod mqtt;
-mod ota;
-mod wifi;
+// Import from the leapyboi library
+#[cfg(feature = "esp32")]
+use leapyboi::config;
+#[cfg(feature = "esp32")]
+use leapyboi::led::{LedController, LightState};
+#[cfg(feature = "esp32")]
+use leapyboi::animations::AnimationType;
 
-#[cfg(feature = "mmwave")]
+// Hardware-specific modules (not testable without ESP)
+#[cfg(feature = "esp32")]
+mod mqtt;
+#[cfg(feature = "esp32")]
+mod ota;
+#[cfg(feature = "esp32")]
+mod wifi;
+#[cfg(all(feature = "esp32", feature = "mmwave"))]
 mod mmwave;
 
-use led::LedController;
-use mqtt::{IncomingCommand, LightCommand};
+#[cfg(feature = "esp32")]
+use mqtt::{IncomingCommand, LightCommand, SwitchCommand};
 
-#[cfg(feature = "mmwave")]
-use esp_idf_svc::sys;
-#[cfg(feature = "mmwave")]
-use std::ffi::CString;
-#[cfg(feature = "mmwave")]
-use std::time::Instant;
 
+#[cfg(feature = "esp32")]
 fn run_startup_led_self_test<D>(led: &mut LedController<D>) -> Result<()>
 where
     D: SmartLedsWrite<Color = RGB8>,
@@ -95,11 +112,13 @@ impl Default for MmwaveTransitionSettings {
 ///
 /// HomeAssistant discovery advertises a maximum of `10000` ms, so values above
 /// that are reduced to keep runtime behavior consistent with UI limits.
+#[cfg(feature = "esp32")]
 fn normalize_transition_lockout_ms(lockout_ms: u32) -> u32 {
     lockout_ms.min(10_000)
 }
 
 #[cfg(feature = "mmwave")]
+#[cfg(feature = "esp32")]
 fn log_instant_mode_warning(source: &str) {
     warn!(
         "mmWave instant transition mode enabled via {source}. {}",
@@ -108,6 +127,7 @@ fn log_instant_mode_warning(source: &str) {
 }
 
 #[cfg(feature = "mmwave")]
+#[cfg(feature = "esp32")]
 fn read_transition_lockout_from_nvs() -> Result<Option<u32>> {
     let namespace = CString::new(MMWAVE_SETTINGS_NVS_NAMESPACE)?;
     let key = CString::new(MMWAVE_TRANSITION_LOCKOUT_NVS_KEY)?;
@@ -138,6 +158,7 @@ fn read_transition_lockout_from_nvs() -> Result<Option<u32>> {
 }
 
 #[cfg(feature = "mmwave")]
+#[cfg(feature = "esp32")]
 fn write_transition_lockout_to_nvs(lockout_ms: u32) -> Result<()> {
     let lockout_ms = normalize_transition_lockout_ms(lockout_ms);
     let namespace = CString::new(MMWAVE_SETTINGS_NVS_NAMESPACE)?;
@@ -170,6 +191,7 @@ fn write_transition_lockout_to_nvs(lockout_ms: u32) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "esp32")]
 fn main() -> Result<()> {
     // Patch the runtime — must be called before anything else.
     // See: https://github.com/esp-rs/esp-idf-template/issues/71
@@ -314,6 +336,18 @@ fn main() -> Result<()> {
 
     info!("Ready — waiting for HomeAssistant commands on {}", config::COMMAND_TOPIC);
 
+    // ── Runtime feature flags ─────────────────────────────────────────────────
+    // Both features start enabled; users can toggle them from HA or raw MQTT.
+    let mut animations_enabled = true;
+    #[cfg(feature = "mmwave")]
+    let mut mmwave_enabled = true;
+
+    // Publish initial switch states so HA shows the correct toggle positions
+    // immediately after boot (before the user has toggled anything).
+    mqtt.publish_animations_state(animations_enabled)?;
+    #[cfg(feature = "mmwave")]
+    mqtt.publish_mmwave_enable_state(mmwave_enabled)?;
+
     // ── Main loop ─────────────────────────────────────────────────────────────
     loop {
         // Re-subscribe after an MQTT reconnect (e.g. broker restart, WiFi drop).
@@ -322,6 +356,10 @@ fn main() -> Result<()> {
             if let Err(e) = mqtt.on_connected() {
                 log::error!("on_connected error: {e:?}");
             }
+            // Re-publish switch states so HA is back in sync after reconnect.
+            mqtt.publish_animations_state(animations_enabled)?;
+            #[cfg(feature = "mmwave")]
+            mqtt.publish_mmwave_enable_state(mmwave_enabled)?;
         }
 
         // Handle an on-demand OTA update request received via MQTT.
@@ -365,15 +403,53 @@ fn main() -> Result<()> {
             }
         }
 
-        // Drain all queued mmWave presence events.
-        #[cfg(feature = "mmwave")]
-        while let Some(event) = mmwave.try_recv() {
-            info!("mmWave event: {:?}", event);
-            let detected = event == mmwave::PresenceEvent::Detected;
-            pending_presence_event = Some(event);
-            mqtt.publish_presence(detected)?;
+        // Drain all queued runtime switch commands.
+        while let Some(sw) = mqtt.try_recv_switch() {
+            match sw {
+                SwitchCommand::Animations(enabled) => {
+                    info!("Animations {}", if enabled { "enabled" } else { "disabled" });
+                    animations_enabled = enabled;
+                    mqtt.publish_animations_state(animations_enabled)?;
+                }
+                #[cfg(feature = "mmwave")]
+                SwitchCommand::Mmwave(enabled) => {
+                    info!("mmWave {}", if enabled { "enabled" } else { "disabled" });
+                    mmwave_enabled = enabled;
+                    mqtt.publish_mmwave_enable_state(mmwave_enabled)?;
+                }
+            }
         }
 
+        // Drain all queued mmWave presence events.
+        // Events are skipped (but still drained) when mmWave reactions are disabled.
+        #[cfg(feature = "mmwave")]
+        while let Some(event) = mmwave.try_recv() {
+            if mmwave_enabled {
+                info!("mmWave event: {:?}", event);
+                let detected = event == mmwave::PresenceEvent::Detected;
+                // apply_presence_event(&mut led, event, mmwave_settings.lockout_ms == 0)?;
+                mqtt.publish_state(&led.state)?;
+                mqtt.publish_presence(detected)?;
+            } else {
+                info!("mmWave event ignored (mmWave disabled): {:?}", event);
+            }
+        }
+
+        // Advance the animation by one tick and push the frame to the ring.
+        //
+        // When animations are disabled the ring renders a static solid-colour
+        // frame without advancing the phase counter; the stored animation
+        // selection is preserved so it resumes correctly when re-enabled.
+        if animations_enabled {
+            led.tick()?;
+        } else {
+            let saved = led.state.animation;
+            led.state.animation = AnimationType::Solid;
+            led.refresh()?;
+            led.state.animation = saved;
+        }
+
+        // TODO: Document.
         #[cfg(feature = "mmwave")]
         if let Some(event) = pending_presence_event {
             let can_apply = mmwave_settings.lockout_ms == 0
@@ -396,6 +472,7 @@ fn main() -> Result<()> {
 // ── Command handler ───────────────────────────────────────────────────────────
 
 /// Apply a single HomeAssistant light command to the LED ring.
+#[cfg(feature = "esp32")]
 fn apply_command<D>(led: &mut LedController<D>, cmd: &LightCommand) -> Result<()>
 where
     D: SmartLedsWrite<Color = RGB8>,
@@ -415,6 +492,14 @@ where
         led.state.b = color.b;
     }
 
+    if let Some(ref effect) = cmd.effect {
+        let new_anim = AnimationType::from_effect_name(effect);
+        if new_anim != led.state.animation {
+            led.state.animation = new_anim;
+            led.reset_phase(); // start the new animation cleanly from frame 0
+        }
+    }
+
     led.refresh()
 }
 
@@ -422,9 +507,10 @@ where
 
 /// Apply a mmWave presence event to the LED ring.
 ///
-/// - `Detected` → turn the ring on with the configured presence colour.
-/// - `Gone`     → switch to the no-presence colour (or turn off if `(0, 0, 0)`).
+/// - `Detected` → turn the ring on with the configured presence colour and animation.
+/// - `Gone`     → switch to the no-presence colour/animation (or turn off if `(0, 0, 0)`).
 #[cfg(feature = "mmwave")]
+#[cfg(feature = "esp32")]
 fn apply_presence_event<D>(
     led: &mut LedController<D>,
     event: mmwave::PresenceEvent,
@@ -437,34 +523,43 @@ where
     let target = match event {
         mmwave::PresenceEvent::Detected => {
             let (r, g, b) = config::PRESENCE_COLOR;
-            led::LightState {
+            LightState {
+                // Turn the ring on
                 on: true,
-                brightness: config::PRESENCE_BRIGHTNESS,
+                brightness: config::NO_PRESENCE_BRIGHTNESS,
                 r,
                 g,
                 b,
+                animation: AnimationType::from_effect_name(config::PRESENCE_ANIMATION)
             }
         }
         mmwave::PresenceEvent::Gone => {
             let (r, g, b) = config::NO_PRESENCE_COLOR;
-            led::LightState {
+            // Turn the ring off if the no-presence colour is pure black.
+            LightState {
                 // Turn the ring off if the no-presence colour is pure black.
                 on: r != 0 || g != 0 || b != 0,
                 brightness: config::NO_PRESENCE_BRIGHTNESS,
                 r,
                 g,
                 b,
+                animation: AnimationType::from_effect_name(config::NO_PRESENCE_ANIMATION)
             }
         }
     };
 
     if immediate {
-        led.apply_state(target)
+        led.apply_state(target);
     } else {
         led.transition_to_state(
             target,
             config::MMWAVE_TRANSITION_STEPS,
             Duration::from_millis(config::MMWAVE_TRANSITION_STEP_DELAY_MS),
-        )
+        );
     }
+    
+    // restart the animation from the beginning on every presence change
+    led.reset_phase();
+    led.refresh()
+
 }

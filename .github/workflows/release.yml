@@ -102,7 +102,7 @@ jobs:
 
       - name: Build firmware
         run: |
-          cargo build --release --features "mmwave"
+          cargo build --release --features "mmwave" --target riscv32imac-esp-espidf
 
       # espflash converts the ELF produced by Cargo into a raw flashable image
       # that esptool.py / the ESP bootloader can consume.
@@ -111,6 +111,7 @@ jobs:
           cargo espflash save-image --release \
             --features "mmwave" \
             --chip esp32c6 \
+            --target riscv32imac-esp-espidf \
             target/riscv32imac-esp-espidf/release/leapyboi
           mv target/riscv32imac-esp-espidf/release/leapyboi leapyboi.bin
 

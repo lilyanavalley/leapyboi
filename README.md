@@ -99,21 +99,145 @@ firmware binary.
 
 ## Build & flash
 
+Here are some common commands to invoke a build process (mix and match according to your needs.)
+
 ```bash
 # Debug build (larger binary, serial logging enabled)
-cargo build
+cargo build --target riscv32imac-esp-espidf
 
 # Release build (size-optimised)
-cargo build --release
+cargo build --target riscv32imac-esp-espidf --release
 
 # Build, flash, and open the serial monitor in one step
-cargo run --release
+cargo run --target riscv32imac-esp-espidf
 ```
 
-> **espflash** auto-detects the serial port.  If it fails, pass the port
-> explicitly: `cargo run --release -- --port /dev/ttyUSB0`
+**espflash** auto-detects the serial port.  If it fails, pass the port (changing `/dev/ttyUSB0` to the applicable port):
 
+```bash
+cargo run --release --target riscv32imac-esp-espidf -- --port /dev/ttyUSB0
+```
 
+There are a lot of different invocation parameters you can use to customize leapyboi, but here's the rundow:
+
+- `build` just builds the project, `run` holds the serial monitor open while running
+- `--target <...>` selects the platform you're building for [^1]
+- `--release` is a release optimization flag to strip debug symbols from binary
+- `--features <...>` selects features to *include* in your binary [^2]
+
+---
+
+## Testing
+
+Tests are run on your local platform without touching the ESP chip whatsoever. Default features (`esp32`) are disabled including the IDF runtime. The `--lib` flag compiles this project as a library so that your system doesn't require all of the overhead to *building* an ESP image.
+
+```bash
+cargo test --no-default-features --lib
+```
+
+---
+
+## LED animations
+
+The ring supports several built-in animation effects selectable from
+HomeAssistant or via raw MQTT.
+
+### Available effects
+
+| Effect name | Description |
+|-------------|-------------|
+| `solid`     | All LEDs show a single static colour (default) |
+| `rainbow`   | A rotating rainbow hue-wheel fills all LEDs |
+| `spinning`  | A single bright pixel (plus short fading tail) circles the ring |
+| `breathe`   | All LEDs fade in and out using the current colour |
+| `custom`    | User-supplied frame animation — see below |
+
+### Selecting an effect in HomeAssistant
+
+The **Leapyboi Ring** light entity in HA shows an **Effect** dropdown
+alongside the usual colour/brightness controls.  Pick any effect from the list
+and it takes effect immediately.
+
+You can also send the effect directly over MQTT:
+
+```
+Topic:   leapyboi/light/set
+Payload: {"state":"ON","effect":"rainbow"}
+```
+
+### Tuning animation speed
+
+All timing constants live in `src/config.rs` — no other file needs changing:
+
+| Constant | Default | Effect on… |
+|----------|---------|------------|
+| `ANIM_RAINBOW_SPEED` | `2` | Hue steps per tick; higher = faster rotation |
+| `ANIM_SPINNING_TICKS_PER_PIXEL` | `2` | Ticks between pixel moves; lower = faster spin |
+| `ANIM_BREATHE_SPEED` | `2` | Phase steps per tick; higher = faster breathing |
+| `ANIM_CUSTOM_TICKS_PER_FRAME` | `4` | Ticks per frame of the custom animation |
+
+One tick ≈ 50 ms (the main-loop period).
+
+### Disabling animations at runtime
+
+A **Leapyboi Animations** toggle switch appears in HomeAssistant alongside the
+light card.  Turning it **off** freezes the ring on a static solid colour
+(preserving the current brightness and RGB values) without losing the selected
+effect — re-enable the switch and the animation resumes from where it left off.
+
+You can also toggle directly over MQTT:
+
+```
+Topic:   leapyboi/animations/set
+Payload: OFF          # pause animations
+Payload: ON           # resume animations
+```
+
+---
+
+## Custom animation via `animation.png`
+
+You can bake a fully custom pixel animation into the firmware by placing an
+image file called `animation.png` in the project root (next to `Cargo.toml`).
+
+### Image format
+
+| Dimension | Meaning |
+|-----------|---------|
+| Width     | **Must equal `LED_COUNT`** (default: 12) — one pixel per LED |
+| Height    | Number of animation frames — as many as you like |
+| Colour    | 8-bit **RGB** or **RGBA** (alpha is ignored) |
+
+Each row in the image is one frame; rows are played top-to-bottom and loop
+continuously.
+
+### Creating an animation
+
+1. Open any image editor (GIMP, Aseprite, Photoshop, etc.)
+2. Create a new image that is **12 × N** pixels (or `LED_COUNT × N`)
+3. Draw each frame as a row of 12 pixels
+4. Export as `animation.png` (8-bit RGB or RGBA) and place it in the project root
+5. Rebuild and reflash:
+
+```bash
+# build.rs decodes the PNG and bakes it in
+cargo build --release --target riscv32imac-esp-espidf
+# flash + open serial monitor
+cargo run --release --target riscv32imac-esp-espidf
+```
+
+If the image dimensions are wrong the build will fail with a helpful error.
+
+### Sharing animations
+
+Because the animation is a standard PNG file you can share it directly with
+other Leapyboi users.  Post the file anywhere images are shared; recipients
+drop it into their project root and reflash.
+
+### Removing the custom animation
+
+Delete `animation.png` and rebuild.  The `custom` effect will disappear from
+the HomeAssistant dropdown automatically.
 
 ---
 
@@ -139,6 +263,19 @@ A `binary_sensor` **Leapyboi Presence** entity also appears in HomeAssistant
 via MQTT discovery.  HomeAssistant light commands continue to work normally —
 the presence sensor is an additional input, and each presence change is
 reflected back to HA.
+
+A separate **Leapyboi mmWave** toggle switch also appears in HA.  Turning it
+**off** makes the firmware ignore all presence events (the ring stays at
+whatever state HA last commanded) without restarting or reflashing.  Re-enable
+it at any time and presence reactions resume immediately.
+
+You can also toggle it directly over MQTT:
+
+```
+Topic:   leapyboi/mmwave/enable/set
+Payload: OFF    # ignore presence events
+Payload: ON     # resume presence reactions
+```
 
 ### Wiring
 
@@ -170,13 +307,13 @@ Current firmware defaults are:
 
 ```bash
 # Debug build with mmWave support
-cargo build --features mmwave
+cargo build --features mmwave --target riscv32imac-esp-espidf
 
 # Release build
-cargo build --release --features mmwave
+cargo build --release --features mmwave --target riscv32imac-esp-espidf
 
 # Build, flash, and monitor
-cargo run --release --features mmwave
+cargo run --release --features mmwave --target riscv32imac-esp-espidf
 ```
 
 ### Supported UART frame protocols
@@ -201,9 +338,10 @@ and preamble hit counters) without changing production defaults.
 
 | Constant | Default | Meaning |
 |----------|---------|---------|
-| `PRESENCE_COLOR` | `(255, 200, 100)` | LED colour when someone is present |
+| `PRESENCE_COLOR` | `(255, 0, 0)` | LED colour when someone is present |
 | `PRESENCE_BRIGHTNESS` | `200` | Brightness (0-255) when present |
-| `NO_PRESENCE_COLOR` | `(0, 0, 30)` | LED colour when no one is detected |
+| `PRESENCE_ANIMATION` | `"rainbow"` | Animation played when present |
+| `NO_PRESENCE_COLOR` | `(255, 255, 0)` | LED colour when no one is detected |
 | `NO_PRESENCE_BRIGHTNESS` | `50` | Brightness when no one is detected |
 | `MMWAVE_TRANSITION_LOCKOUT_DEFAULT_MS` | `2000` | Default minimum time between mmWave-driven light transitions |
 | `MMWAVE_TRANSITION_STEPS` | `12` | Number of steps in each mmWave transition |
@@ -278,18 +416,20 @@ address on port 1883.
 ```
 leapyboi/
 ├── src/
-│   ├── main.rs      # Boot sequence and main loop
-│   ├── config.rs    # Compile-time constants (pin, topic names, …)
-│   ├── led.rs       # WS2812B ring controller (generic over SmartLedsWrite)
-│   ├── wifi.rs      # WiFi connection helper
-│   ├── mqtt.rs      # MQTT client, HA discovery, command / state handling
-│   └── mmwave.rs    # mmWave UART driver + frame parser (feature: mmwave)
-├── build.rs         # Reads cfg.toml, calls embuild for ESP-IDF
+│   ├── main.rs        # Boot sequence and main loop
+│   ├── config.rs      # Compile-time constants (pin, topic names, animation speeds, …)
+│   ├── animations.rs  # Animation engine (solid, rainbow, spinning, breathe, custom)
+│   ├── led.rs         # WS2812B ring controller (generic over SmartLedsWrite)
+│   ├── wifi.rs        # WiFi connection helper
+│   ├── mqtt.rs        # MQTT client, HA discovery, command / state handling
+│   └── mmwave.rs      # mmWave UART driver + frame parser (feature: mmwave)
+├── animation.png       # Optional: custom animation (width=LED_COUNT, height=frames)
+├── build.rs            # Reads cfg.toml; decodes animation.png; calls embuild for ESP-IDF
 ├── Cargo.toml
 ├── sdkconfig.defaults  # ESP-IDF Kconfig overrides
 ├── cfg.toml.example    # Credential template (committed)
 └── .cargo/
-    └── config.toml  # Build target, linker, runner
+    └── config.toml     # Build target, linker, runner
 ```
 
 ---
@@ -302,9 +442,14 @@ leapyboi/
 | Data GPIO pin | `cfg.toml` → `led_data_pin_num` |
 | MQTT topics | `src/config.rs` → `HA_DISCOVERY_TOPIC`, `COMMAND_TOPIC`, … |
 | Device name shown in HA | `src/config.rs` → `DEVICE_NAME` |
+| Animation speeds | `src/config.rs` → `ANIM_RAINBOW_SPEED`, `ANIM_BREATHE_SPEED`, … |
+| Custom animation frames | Place `animation.png` in project root (width=`LED_COUNT`, height=frames) |
+| Toggle animations at runtime | HA **Leapyboi Animations** switch, or `leapyboi/animations/set` (`ON`/`OFF`) |
 | ESP-IDF version | `.cargo/config.toml` → `ESP_IDF_VERSION` |
 | mmWave UART pins | `src/main.rs` → `peripherals.pins.gpio16 / gpio17` |
 | mmWave LED colours | `src/config.rs` → `PRESENCE_COLOR`, `NO_PRESENCE_COLOR`, … |
+| mmWave LED animations | `src/config.rs` → `PRESENCE_ANIMATION`, `NO_PRESENCE_ANIMATION` |
+| Toggle mmWave at runtime | HA **Leapyboi mmWave** switch, or `leapyboi/mmwave/enable/set` (`ON`/`OFF`) |
 
 
 ## License
@@ -312,3 +457,9 @@ leapyboi/
 This software is licensed under the GNU General Public License, version 3.
 
 [![GNU GPL-3 License Logo](https://upload.wikimedia.org/wikipedia/commons/9/93/GPLv3_Logo.svg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original)](#)
+
+## Footnotes
+
+[^1]: The `riscv32imac-esp-espidf` target is the one for RISC-V ESP chips. You'll invoke this target (explicitly, it **is** required) when you want to flash an image. When you invoke your native target for testing, say, on x86 Linux: `x86_64-unknown-linux-gnu`.  
+
+[^2]: Features include: `mmwave`, `mmwave-diagnostics`. The `esp32` feature is included by default, so if you want to test locally, omit this feature with: `--no-default-features`.

@@ -99,6 +99,26 @@ pub fn mmwave_uart_port() -> u8 {
 /// Number of LEDs in the ring.  Change to match your specific ring module.
 pub const LED_COUNT: usize = 24;
 
+// ── Animation settings ────────────────────────────────────────────────────────
+// All speed constants are in units of "ticks" where 1 tick ≈ 50 ms (20 Hz).
+
+/// Hue steps advanced per tick for the rainbow animation.
+/// Higher = faster rotation.  At 1 step/tick the wheel completes in ~12.8 s.
+/// At 2 steps/tick the wheel completes in ~6.4 s.
+pub const ANIM_RAINBOW_SPEED: u32 = 2;
+
+/// Ticks between each pixel-position advance for the spinning animation.
+/// Lower = faster spin.  At 2 ticks/pixel with a 12-LED ring: ~1.2 s/revolution.
+pub const ANIM_SPINNING_TICKS_PER_PIXEL: u32 = 2;
+
+/// Phase steps advanced per tick for the breathe animation.
+/// Higher = faster breathing.  At 2 steps/tick one full breath takes ~6.4 s.
+pub const ANIM_BREATHE_SPEED: u32 = 2;
+
+/// Ticks per frame for the custom PNG animation.
+/// At 4 ticks/frame the animation plays at ~5 fps (50 ms × 4 = 200 ms/frame).
+pub const ANIM_CUSTOM_TICKS_PER_FRAME: u32 = 4;
+
 // ── HomeAssistant MQTT topics ─────────────────────────────────────────────────
 
 /// MQTT discovery topic — publishes the HA `light` entity configuration.
@@ -113,6 +133,34 @@ pub const STATE_TOPIC: &str = "leapyboi/light/state";
 
 /// Topic used for LWT / online-offline availability reporting.
 pub const AVAILABILITY_TOPIC: &str = "leapyboi/light/availability";
+
+// ── Runtime switch: animations ────────────────────────────────────────────────
+
+/// MQTT discovery topic for the HA `switch` that enables/disables animations.
+pub const ANIMATIONS_DISCOVERY_TOPIC: &str =
+    "homeassistant/switch/leapyboi_animations/config";
+
+/// Topic HA writes to toggle animation playback (`"ON"` / `"OFF"`).
+pub const ANIMATIONS_COMMAND_TOPIC: &str = "leapyboi/animations/set";
+
+/// Topic the firmware publishes the current animation-enabled state to.
+pub const ANIMATIONS_STATE_TOPIC: &str = "leapyboi/animations/state";
+
+// ── Runtime switch: mmWave enable ─────────────────────────────────────────────
+
+/// MQTT discovery topic for the HA `switch` that enables/disables mmWave presence
+/// reactions (only published when the `mmwave` feature is compiled in).
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_ENABLE_DISCOVERY_TOPIC: &str =
+    "homeassistant/switch/leapyboi_mmwave_enable/config";
+
+/// Topic HA writes to toggle mmWave reactions at runtime (`"ON"` / `"OFF"`).
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_ENABLE_COMMAND_TOPIC: &str = "leapyboi/mmwave/enable/set";
+
+/// Topic the firmware publishes the current mmWave-enabled state to.
+#[cfg(feature = "mmwave")]
+pub const MMWAVE_ENABLE_STATE_TOPIC: &str = "leapyboi/mmwave/enable/state";
 
 // ── Device metadata shown in HomeAssistant ────────────────────────────────────
 
@@ -193,6 +241,13 @@ pub const PRESENCE_COLOR: (u8, u8, u8) = (255, 0, 0);
 #[cfg(feature = "mmwave")]
 pub const PRESENCE_BRIGHTNESS: u8 = 200;
 
+/// Animation played on the ring when presence **is** detected.
+///
+/// Must be one of: `"solid"`, `"rainbow"`, `"spinning"`, `"breathe"`, `"custom"`.
+/// `"rainbow"` gives a lively indication that someone is in the room.
+#[cfg(feature = "mmwave")]
+pub const PRESENCE_ANIMATION: &str = "rainbow";
+
 /// LED colour (r, g, b) applied when **no** presence is detected.
 /// Set to `(0, 0, 0)` to turn the ring off when the room is empty.
 /// Default is yellow to provide a gentle night light when no one's home. Adjust to taste!
@@ -202,6 +257,13 @@ pub const NO_PRESENCE_COLOR: (u8, u8, u8) = (255, 255, 0);
 /// LED brightness applied when no presence is detected.
 #[cfg(feature = "mmwave")]
 pub const NO_PRESENCE_BRIGHTNESS: u8 = 50;
+
+/// Animation played on the ring when **no** presence is detected.
+///
+/// Must be one of: `"solid"`, `"rainbow"`, `"spinning"`, `"breathe"`, `"custom"`.
+/// `"breathe"` gives a calm, ambient glow when the room is empty.
+#[cfg(feature = "mmwave")]
+pub const NO_PRESENCE_ANIMATION: &str = "breathe";
 
 // ── OTA (over-the-air) update configuration ───────────────────────────────────
 
@@ -227,3 +289,4 @@ pub const OTA_UPDATE_TOPIC: &str = "leapyboi/ota/update";
 ///
 /// Published values: `"checking"`, `"up_to_date"`, `"updating"`, `"error: …"`
 pub const OTA_STATUS_TOPIC: &str = "leapyboi/ota/status";
+

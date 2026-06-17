@@ -1,6 +1,5 @@
-[build]
-# ESP32-C6 is RISC-V based; this target is provided by the esp-rs toolchain.
-target = "riscv32imac-esp-espidf"
+# When building the embedded binary, explicitly specify: cargo build --target riscv32imac-esp-espidf
+# When testing, use the default (host): cargo test
 
 [target.riscv32imac-esp-espidf]
 # ldproxy forwards linker arguments to the real linker; required by esp-idf-hal.
@@ -12,6 +11,9 @@ rustflags = [
     # Enable 64-bit time_t on ESP-IDF (avoids the year-2038 problem).
     "--cfg", "espidf_time64",
 ]
+
+[target.x86_64-unknown-linux-gnu]
+# Allow local-only tests to run on the host machine without an ESP connected.
 
 [env]
 # ESP-IDF version that embuild will download / locate.  Tested with v5.2.x.
