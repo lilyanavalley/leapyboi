@@ -264,6 +264,13 @@ pub const OTA_FIRMWARE_URL: &str = env!("OTA_FIRMWARE_URL");
 /// Example: `"https://github.com/you/leapyboi/releases/latest/download/version.txt"`
 pub const OTA_VERSION_URL: &str = env!("OTA_VERSION_URL");
 
+/// Secret token required for private repo access when using GitHub's API to check for new releases.
+/// Populated from `cfg.toml → ota_updater_token` at compile time. 
+/// 
+/// If your version file is publicly accessible, you can set this to an empty string.
+/// Example: `"ghp_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"`
+pub const OTA_UPDATER_TOKEN: &str = env!("OTA_UPDATER_TOKEN");
+
 /// MQTT topic the device subscribes to for on-demand OTA update requests.
 ///
 /// Publish any payload to this topic to trigger an immediate OTA check.

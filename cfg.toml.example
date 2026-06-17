@@ -56,3 +56,9 @@ ota_firmware_url = "https://github.com/YOUR_USERNAME/YOUR_REPO_NAME/releases/lat
 # The file contains only the version string (e.g. "1.2.3") so the device can
 # decide whether a download is necessary without fetching the full binary.
 ota_version_url = "https://github.com/YOUR_USERNAME/YOUR_REPO_NAME/releases/latest/download/version.txt"
+
+# GitHub Access Token.
+# This is required for *private* GitHub forks of leapyboi.
+# Generate a Personal Access Token with read access to repository contents on your fork.
+# You may leave this blank if your repo is public.
+ota_updater_token = "ghp_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"

@@ -30,7 +30,8 @@ const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// device will have restarted before this value is returned to the caller.
 /// Returns `Err` if the version check or download failed; the caller can log
 /// the error and continue running the current firmware.
-pub fn check_and_update(version_url: &str, firmware_url: &str) -> Result<bool> {
+pub fn check_and_update(version_url: &str, firmware_url: &str, updater_token: &str) -> Result<bool> {
+
     if version_url.is_empty() || firmware_url.is_empty() {
         warn!(
             "OTA: ota_firmware_url / ota_version_url not set in cfg.toml — skipping update check"
@@ -59,16 +60,22 @@ pub fn check_and_update(version_url: &str, firmware_url: &str) -> Result<bool> {
         CURRENT_VERSION, remote_version
     );
 
-    apply_update(firmware_url)
+    apply_update(firmware_url, updater_token)
+
 }
 
 /// Download firmware from `firmware_url` and apply it as an OTA update.
 ///
 /// On success the device restarts and **this function does not return**.
 /// On failure an `Err` is returned so the caller can log the problem.
-pub fn apply_update(firmware_url: &str) -> Result<bool> {
+pub fn apply_update(firmware_url: &str, updater_token: &str) -> Result<bool> {
+
     if firmware_url.is_empty() {
         return Err(anyhow!("OTA: ota_firmware_url is not configured"));
+    }
+
+    if updater_token.is_empty() || updater_token.find("ghp_XXXXX").is_some() {
+        warn!("OTA: ota_updater_token is not set or is a placeholder value.  If your firmware is private, you must set this to a GitHub Personal Access Token with `repo` scope so the device can access the version and firmware files.  Skipping update check.");
     }
 
     info!("OTA: downloading from {}", firmware_url);
@@ -78,7 +85,7 @@ pub fn apply_update(firmware_url: &str) -> Result<bool> {
         .initiate_update()
         .map_err(|e| anyhow!("EspOta::begin failed: {e:?}"))?;
 
-    let result = stream_firmware(firmware_url, &mut update);
+    let result = stream_firmware(firmware_url, &mut update, updater_token);
 
     match result {
         Ok(total) => {
@@ -104,11 +111,29 @@ pub fn apply_update(firmware_url: &str) -> Result<bool> {
 
 /// Stream firmware binary from `url` into `update`, returning the total number
 /// of bytes written.
-fn stream_firmware(url: &str, update: &mut esp_idf_svc::ota::EspOtaUpdate<'_>) -> Result<usize> {
+fn stream_firmware(
+    url: &str,
+    update: &mut esp_idf_svc::ota::EspOtaUpdate<'_>,
+    updater_token: &str
+) -> Result<usize> {
+
+    // * Even though the token is optional, if it's present we need to prefix it with "Bearer " for GitHub authentication.
+    let updater_token = String::from("Bearer ") + updater_token;
+
     let mut client = HttpClient::wrap(http_connection()?);
+    let mut headers = Vec::new();
+    headers.push(("Accept:", "application/octet-stream"));
+
+    if !updater_token.is_empty() {
+        headers.push(("Authorization:", updater_token.as_str()));
+    }
 
     let request = client
-        .request(Method::Get, url, &[])
+        .request(
+            Method::Get,
+            url,
+            &headers
+        )
         .map_err(|e| anyhow!("HTTP GET request failed: {e:?}"))?;
     let mut response = request
         .submit()
@@ -139,6 +164,7 @@ fn stream_firmware(url: &str, update: &mut esp_idf_svc::ota::EspOtaUpdate<'_>) -
     }
 
     Ok(total)
+
 }
 
 /// Fetch the body of a small text resource (e.g. version.txt) and return it
@@ -155,7 +181,7 @@ fn fetch_text(url: &str) -> Result<String> {
         .map_err(|e| anyhow!("HTTP submit failed: {e:?}"))?;
 
     let status = response.status();
-    if status != 200 {
+    if status != 200 { // BUG: HTTP code 618 is returned, but the version is available...
         return Err(anyhow!("HTTP {} fetching {}", status, url));
     }
 

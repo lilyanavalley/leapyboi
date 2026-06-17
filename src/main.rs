@@ -243,7 +243,11 @@ fn main() -> Result<()> {
     // image is found the device downloads it and restarts; execution only
     // continues here when the firmware is already up to date.
     info!("OTA: checking for firmware update…");
-    if let Err(e) = ota::check_and_update(config::OTA_VERSION_URL, config::OTA_FIRMWARE_URL) {
+    if let Err(e) = ota::check_and_update(
+        config::OTA_VERSION_URL,
+        config::OTA_FIRMWARE_URL,
+        config::OTA_UPDATER_TOKEN
+    ) {
         log::warn!("OTA: check failed (continuing with current firmware): {e:#}");
     }
 
@@ -365,7 +369,7 @@ fn main() -> Result<()> {
         // Handle an on-demand OTA update request received via MQTT.
         if mqtt.ota_requested.swap(false, Ordering::Relaxed) {
             info!("OTA: on-demand update requested via MQTT");
-            if let Err(e) = ota::apply_update(config::OTA_FIRMWARE_URL) {
+            if let Err(e) = ota::apply_update(config::OTA_FIRMWARE_URL, config::OTA_UPDATER_TOKEN) {
                 log::error!("OTA: on-demand update failed: {e:#}");
             }
         }

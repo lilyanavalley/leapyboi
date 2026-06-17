@@ -67,6 +67,9 @@ struct AppConfig {
 
     #[serde(default)]
     ota_version_url: String,
+
+    #[serde(default)]
+    updater_token: String,
 }
 
 fn default_mqtt_url() -> String {
@@ -126,6 +129,7 @@ fn main() {
         emit_env("MMWAVE_UART_PORT", &app.mmwave_uart_port.to_string());
         emit_env("OTA_FIRMWARE_URL", &app.ota_firmware_url);
         emit_env("OTA_VERSION_URL", &app.ota_version_url);
+        emit_env("OTA_UPDATER_TOKEN", &app.updater_token);
     } else {
         // No cfg.toml yet — emit empty/default placeholders so that the build
         // succeeds with a clear warning.  The firmware will not connect until
@@ -142,7 +146,7 @@ fn main() {
         emit_env("MMWAVE_UART_PORT", "1");
         emit_env("OTA_FIRMWARE_URL", "");
         emit_env("OTA_VERSION_URL", "");
-
+        emit_env("OTA_UPDATER_TOKEN", "");
         println!(
               "cargo:warning=cfg.toml not found — \
                copy cfg.toml.example to cfg.toml and fill in your WiFi / MQTT settings \
@@ -166,7 +170,11 @@ fn main() {
 }
 
 fn emit_env(key: &str, value: &str) {
-    println!("cargo:rustc-env={key}={value}");
+    if key == "OTA_UPDATER_TOKEN" {
+        println!("cargo:rustc-env={key}=<EXPUNGED>");
+    } else {
+        println!("cargo:rustc-env={key}={value}");
+    }
 }
 
 // ── Custom animation (animation.png) ──────────────────────────────────────────
