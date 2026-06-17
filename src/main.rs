@@ -48,12 +48,9 @@ use ws2812_esp32_rmt_driver::{driver::color::LedPixelColorGrb24, LedPixelEsp32Rm
 #[cfg(feature = "esp32")]
 use leapyboi::config;
 #[cfg(feature = "esp32")]
-use leapyboi::led::LedController;
+use leapyboi::led::{LedController, LightState};
 #[cfg(feature = "esp32")]
 use leapyboi::animations::AnimationType;
-
-mod animations;
-mod led;
 
 // Hardware-specific modules (not testable without ESP)
 #[cfg(feature = "esp32")]
@@ -526,7 +523,7 @@ where
     let target = match event {
         mmwave::PresenceEvent::Detected => {
             let (r, g, b) = config::PRESENCE_COLOR;
-            led::LightState {
+            LightState {
                 // Turn the ring on
                 on: true,
                 brightness: config::NO_PRESENCE_BRIGHTNESS,
@@ -539,7 +536,7 @@ where
         mmwave::PresenceEvent::Gone => {
             let (r, g, b) = config::NO_PRESENCE_COLOR;
             // Turn the ring off if the no-presence colour is pure black.
-            led::LightState {
+            LightState {
                 // Turn the ring off if the no-presence colour is pure black.
                 on: r != 0 || g != 0 || b != 0,
                 brightness: config::NO_PRESENCE_BRIGHTNESS,
